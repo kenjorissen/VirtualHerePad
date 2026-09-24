@@ -1,13 +1,14 @@
 [Unit]
 Description=VirtualHere Pad
 After=network.target
+RequiresMountsFor=/home/.vhp
 
 [Service]
 Type=simple
-WorkingDirectory=/var/lib/vhp
+WorkingDirectory=/home/.vhp/data
 RuntimeDirectory=vhp
 RuntimeDirectoryMode=0700
-ExecStart=/usr/bin/systemd-inhibit --what=sleep --mode=block --who=VHP "--why=Sharing Steam Deck controller" /usr/local/lib/vhp/vhp-root run
+ExecStart=/usr/bin/systemd-inhibit --what=sleep --mode=block --who=VHP "--why=Sharing Steam Deck controller" /home/.vhp/bin/vhp-root run
 KillMode=control-group
 KillSignal=SIGTERM
 TimeoutStopSec=15

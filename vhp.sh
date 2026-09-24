@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-HELPER=/usr/local/lib/vhp/vhp-root
+HELPER=/home/.vhp/bin/vhp-root
 if [[ ! -x "$HELPER" ]]; then
   echo 'VHP is not installed. Run ./setup.sh from the checkout first.' >&2
   exit 1

@@ -17,9 +17,13 @@ for cmd in sudo systemctl systemd-inhibit curl konsole python3; do
 done
 
 section 'Installed files and ownership'
-for path in /usr/local/lib/vhp /usr/local/lib/vhp/vhp-root /usr/local/lib/vhp/vhusbdx86_64 /etc/systemd/system/vhp.service; do
+for path in /home/.vhp /home/.vhp/bin /home/.vhp/bin/vhp-root /home/.vhp/bin/vhusbdx86_64 /etc/systemd/system/vhp.service /home/.vhp/data; do
   if [[ -e $path ]]; then
     stat -c '%U:%G %a %n' "$path"
+    [[ ! -L $path ]] || warn "Unexpected symlink: $path"
+    if [[ $path == /home/.vhp/data && $(stat -c '%a' "$path") != 700 ]]; then
+      warn 'Settings directory should have mode 700'
+    fi
     owner=$(stat -c '%u' "$path")
     mode=$(stat -c '%a' "$path")
     if [[ $owner != 0 ]] || (( (8#$mode & 8#022) != 0 )); then
@@ -29,13 +33,13 @@ for path in /usr/local/lib/vhp /usr/local/lib/vhp/vhp-root /usr/local/lib/vhp/vh
     warn "Missing $path; rerun ./setup.sh"
   fi
 done
-for path in /usr/local/lib/vhp/vhp-root /usr/local/lib/vhp/vhusbdx86_64; do
+for path in /home/.vhp/bin/vhp-root /home/.vhp/bin/vhusbdx86_64; do
   [[ -x $path ]] || warn "Not executable: $path"
 done
 
 section 'Passwordless sudo authorization (does not execute the helper)'
 for action in start stop keepalive; do
-  if sudo -n -l /usr/local/lib/vhp/vhp-root "$action"; then
+  if sudo -n -l /home/.vhp/bin/vhp-root "$action"; then
     echo "OK: $action authorized (the installed rule should say NOPASSWD)"
   else
     warn "Cannot confirm $action authorization; rerun ./setup.sh"

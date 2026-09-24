@@ -21,14 +21,17 @@ and downloads the current x86-64 server directly from VirtualHere over HTTPS.
 Set a password with `passwd` first if your Deck doesn't have one.
 Dependencies: Bash, curl, sudo, systemd, and standard GNU utilities.
 
-SteamOS may have a read-only system partition. If installation fails because of
-that, you can explicitly unlock it with `sudo steamos-readonly disable`, rerun
-setup, and restore it with `sudo steamos-readonly enable`. VHP does not change
-that protection automatically. SteamOS updates may remove installed system
-files; rerun setup afterwards if necessary.
+Setup leaves SteamOS's read-only system partition protected: binaries go under
+`/home/.vhp/bin`, settings under `/home/.vhp/data`, and only the systemd unit and
+sudo rule go into `/etc` (normally writable through SteamOS's overlay). No
+`steamos-readonly disable` is needed on the expected stock layout. This still
+needs hardware verification; setup will report errors on unsupported layouts.
+
+Normal SteamOS updates should preserve `/home` data and binaries. If an update
+resets the `/etc` service or sudo rule, rerun setup to restore integration.
 
 Setup is safe to rerun: it stops the current service, replaces installed code,
-and keeps settings/license data in `/var/lib/vhp`. It does not start a service at
+and keeps settings/license data in `/home/.vhp/data`. It does not start a service at
 boot. Each setup fetches the latest upstream binary; to require a known hash:
 
 ```bash
@@ -79,12 +82,17 @@ service directly without the launcher also expires after 10 seconds.
 To stop it manually:
 
 ```bash
-sudo -n /usr/local/lib/vhp/vhp-root stop
+sudo -n /home/.vhp/bin/vhp-root stop
 ```
 
 ## Settings and diagnostics
 
-- Server settings/license: `/var/lib/vhp/config.ini`, created on first run.
+- Server settings/license: `/home/.vhp/data/config.ini`, created on first run.
+  This root-owned directory (mode `0700`) is on SteamOS's persistent home
+  partition, outside the user-writable `/home/deck`. Normal SteamOS updates
+  should preserve it; keep a separate backup for recovery/reimaging.
+  Setup automatically copies an existing `/var/lib/vhp/config.ini` only if the
+  new config does not exist, leaving the original untouched as a fallback.
 - Logs: `journalctl -u vhp.service -n 100 --no-pager`
 - Status: `systemctl status vhp.service`
 - Read-only diagnostic report: `./doctor.sh` (run as your normal user).
@@ -95,7 +103,7 @@ sudo -n /usr/local/lib/vhp/vhp-root stop
 
 ## Privileges and cleanup
 
-Setup installs root-owned code under `/usr/local/lib/vhp`, a systemd service,
+Setup installs root-owned code under `/home/.vhp/bin`, a systemd service,
 and a sudoers rule allowing only that service's fixed **start/stop/keepalive** operations.
 Heartbeats contain only system uptime and live in root-only `/run/vhp`; no
 caller-supplied paths or commands are accepted.
@@ -124,9 +132,10 @@ inhibitors don't prevent privileged forced suspension.
 ./uninstall.sh --purge-settings
 ```
 
-By default settings remain in `/var/lib/vhp`. Uninstall asks for sudo access and
-stops the service before removing installed code and its sudo rule. As with
-setup, SteamOS's read-only partition may need to be temporarily unlocked.
+By default settings remain in `/home/.vhp/data`. `--purge-settings` removes all
+of `/home/.vhp` and any previous `/var/lib/vhp` data. Uninstall asks for sudo
+access and stops the service before removing installed code and its sudo rule.
+Neither installation nor removal writes to `/usr`.
 Remove the non-Steam shortcut manually in Steam. The checkout is never deleted
 by uninstall, even with `--purge-settings`.
 

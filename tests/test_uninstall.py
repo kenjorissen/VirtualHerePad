@@ -32,13 +32,17 @@ class UninstallTests(unittest.TestCase):
         result, commands = self.run_uninstall()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn('/var/lib/vhp', commands)
+        self.assertNotIn('rm -rf -- /home/.vhp /', commands)
+        self.assertNotIn('/home/.vhp/data', commands)
+        self.assertIn('rm -rf -- /home/.vhp/bin /run/vhp', commands)
+        self.assertNotIn('/usr/local', commands)
         self.assertLess(commands.index('systemctl stop'), commands.index('rm -f'))
         self.assertIn('/etc/sudoers.d/vhp', commands)
 
     def test_purge_is_explicit(self):
         result, commands = self.run_uninstall(['--purge-settings'])
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('rm -rf -- /var/lib/vhp', commands)
+        self.assertIn('rm -rf -- /home/.vhp /var/lib/vhp', commands)
 
     def test_stop_failure_prevents_removal(self):
         result, commands = self.run_uninstall(stop_failure=True)

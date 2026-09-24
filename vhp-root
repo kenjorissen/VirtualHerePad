@@ -55,7 +55,7 @@ if [[ -r "$BRIGHTNESS_FILE" && -w "$BRIGHTNESS_FILE" ]]; then
   printf '0\n' > "$BRIGHTNESS_FILE"
 fi
 
-/usr/local/lib/vhp/vhusbdx86_64 -c /var/lib/vhp/config.ini &
+/home/.vhp/bin/vhusbdx86_64 -c /home/.vhp/data/config.ini &
 child=$!
 while kill -0 "$child" 2>/dev/null; do
   read -r uptime _ < /proc/uptime

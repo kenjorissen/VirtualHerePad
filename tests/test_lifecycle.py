@@ -34,7 +34,7 @@ class LifecycleTests(unittest.TestCase):
             source = source.replace('[[ $EUID == 0 && $# == 1 ]]', '[[ $# == 1 ]]')
             source = source.replace('/run/vhp', str(runtime))
             source = source.replace('/sys/class/backlight/amdgpu_bl0/brightness', str(brightness))
-            source = source.replace('/usr/local/lib/vhp/vhusbdx86_64', str(server))
+            source = source.replace('/home/.vhp/bin/vhusbdx86_64', str(server))
             source = source.replace('exec /usr/bin/systemctl "$1" vhp.service', 'exit 0')
             helper.write_text(source)
             helper.chmod(0o755)
@@ -47,7 +47,7 @@ class LifecycleTests(unittest.TestCase):
             systemctl.chmod(0o755)
             launcher = folder / 'launcher'
             launcher.write_text((ROOT / 'vhp.sh').read_text().replace(
-                '/usr/local/lib/vhp/vhp-root', str(helper)).replace(
+                '/home/.vhp/bin/vhp-root', str(helper)).replace(
                 '/usr/bin/systemctl', str(systemctl)))
             launcher.chmod(0o755)
             service = subprocess.Popen([str(helper), 'run'], start_new_session=True,

@@ -31,26 +31,63 @@ else
   sha256sum "$tmp/vhusbdx86_64"
 fi
 
-printf '%s ALL=(root) NOPASSWD: /usr/local/lib/vhp/vhp-root start, /usr/local/lib/vhp/vhp-root stop, /usr/local/lib/vhp/vhp-root keepalive\n' "$user" > "$tmp/sudoers"
+printf '%s ALL=(root) NOPASSWD: /home/.vhp/bin/vhp-root start, /home/.vhp/bin/vhp-root stop, /home/.vhp/bin/vhp-root keepalive\n' "$user" > "$tmp/sudoers"
 visudo -cf "$tmp/sudoers"
 sudo -v
 # Reinstalling stops the old instance first so it can restore brightness.
 if systemctl is-active --quiet vhp.service; then
   sudo systemctl stop vhp.service
 fi
-sudo install -d -o root -g root -m 755 /usr/local/lib/vhp
-sudo install -d -o root -g root -m 700 /var/lib/vhp
-sudo install -o root -g root -m 755 "$tmp/vhusbdx86_64" /usr/local/lib/vhp/vhusbdx86_64
-sudo install -o root -g root -m 755 vhp-root /usr/local/lib/vhp/vhp-root
+# Persistent SteamOS code/data lives on /home, outside the user's writable home.
+sudo bash <<'VHP_DATA_SETUP'
+set -euo pipefail
+base=/home/.vhp
+data=$base/data
+# Refuse pre-existing user-controlled paths rather than taking ownership of them.
+for directory in "$base" "$base/bin" "$data"; do
+  if [[ -L "$directory" ]] || { [[ -e "$directory" ]] &&
+    [[ ! -d "$directory" || $(stat -c '%u' "$directory") != 0 ]]; }; then
+    echo "Refusing unsafe installation directory: $directory" >&2
+    exit 1
+  fi
+  if [[ -d "$directory" ]]; then
+    mode=$(stat -c '%a' "$directory")
+    if (( (8#$mode & 8#022) != 0 )); then
+      echo "Refusing group/other-writable directory: $directory" >&2
+      exit 1
+    fi
+  fi
+done
+for config in "$base/config.ini" "$data/config.ini"; do
+  if [[ -L "$config" ]]; then
+    echo "Refusing symlinked config: $config" >&2
+    exit 1
+  fi
+  if [[ -f "$config" ]]; then
+    chown root:root "$config"
+    chmod 600 "$config"
+  fi
+done
+install -d -o root -g root -m 755 "$base" "$base/bin"
+install -d -o root -g root -m 700 "$data"
+for previous in "$base/config.ini" /var/lib/vhp/config.ini; do
+  if [[ ! -e "$data/config.ini" && -f "$previous" ]]; then
+    install -o root -g root -m 600 "$previous" "$data/config.ini"
+    echo "Migrated settings to $data; original retained at $previous."
+  fi
+done
+VHP_DATA_SETUP
+sudo install -o root -g root -m 755 "$tmp/vhusbdx86_64" /home/.vhp/bin/vhusbdx86_64
+sudo install -o root -g root -m 755 vhp-root /home/.vhp/bin/vhp-root
 sudo install -o root -g root -m 644 vhp.service /etc/systemd/system/vhp.service
 # Preserve any existing license/settings. Never automatically import checkout files.
 sudo install -o root -g root -m 440 "$tmp/sudoers" /etc/sudoers.d/vhp
 sudo systemctl daemon-reload
 sudo visudo -cf /etc/sudoers.d/vhp
-sudo -n -l /usr/local/lib/vhp/vhp-root start
+sudo -n -l /home/.vhp/bin/vhp-root start
 
 echo 'Installed. Run ./vhp.sh, or add it to Steam as a non-Steam game.'
-echo 'Settings: /var/lib/vhp/config.ini (created by VirtualHere on first run).'
+echo 'Settings: /home/.vhp/data/config.ini (created by VirtualHere on first run).'
 echo 'Logs: journalctl -u vhp.service'
 echo
 if ! command -v python3 >/dev/null; then
