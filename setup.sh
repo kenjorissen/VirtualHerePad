@@ -69,7 +69,7 @@ binary_hash=$(sha256sum "$tmp/vhusbdx86_64")
 printf 'VHP_COMMIT=%s\nVIRTUALHERE_SHA256=%s\nINSTALLED_UTC=%s\n' \
   "$commit" "${binary_hash%% *}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$tmp/build-info.txt"
 
-printf '%s ALL=(root) NOPASSWD: /home/.vhp/bin/vhp-root start, /home/.vhp/bin/vhp-root stop, /home/.vhp/bin/vhp-root keepalive\n' "$user" > "$tmp/sudoers"
+printf '%s ALL=(root) NOPASSWD: /home/.vhp/bin/vhp-root start, /home/.vhp/bin/vhp-root stop, /home/.vhp/bin/vhp-root keepalive, /home/.vhp/bin/vhp-root check\n' "$user" > "$tmp/sudoers"
 visudo -cf "$tmp/sudoers"
 sudo -v
 # Reinstalling stops the old instance first so it can restore brightness.
@@ -120,10 +120,17 @@ sudo install -o root -g root -m 755 vhp-root /home/.vhp/bin/vhp-root
 sudo install -o root -g root -m 644 "$tmp/build-info.txt" /home/.vhp/bin/build-info.txt
 sudo install -o root -g root -m 644 vhp.service /etc/systemd/system/vhp.service
 # Preserve any existing license/settings. Never automatically import checkout files.
-sudo install -o root -g root -m 440 "$tmp/sudoers" /etc/sudoers.d/vhp
+# SteamOS's general password-required rule must come before this override.
+sudo install -o root -g root -m 440 "$tmp/sudoers" /etc/sudoers.d/zz-vhp
+sudo rm -f -- /etc/sudoers.d/vhp
 sudo systemctl daemon-reload
-sudo visudo -cf /etc/sudoers.d/vhp
-sudo -n -l /home/.vhp/bin/vhp-root start
+sudo visudo -c
+# -k ignores cached authentication for this invocation; -n never prompts.
+# A real harmless invocation catches rule-order problems that sudo -l misses.
+if ! sudo -k -n /home/.vhp/bin/vhp-root check; then
+  echo 'ERROR: passwordless VHP access failed. Inspect sudo -l for later overriding rules.' >&2
+  exit 1
+fi
 
 echo 'VHP components installed successfully.'
 echo 'Settings: /home/.vhp/data/config.ini (created by VirtualHere on first run).'

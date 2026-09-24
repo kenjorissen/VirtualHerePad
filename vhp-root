@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installed root-owned by setup.sh; sudo permits only start/stop/keepalive.
+# Installed root-owned by setup.sh; sudo permits only start/stop/keepalive/check.
 set -euo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -13,6 +13,10 @@ heartbeat() {
   mv -f -- "$temporary" "$LEASE"
 }
 case "$1" in
+  check)
+    # Harmless authentication probe: never starts VHP or changes state.
+    exit 0
+    ;;
   keepalive)
     # The service owns this root-only runtime directory.
     [[ -d /run/vhp ]] || exit 1

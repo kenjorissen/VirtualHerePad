@@ -48,10 +48,17 @@ if [[ -r /home/.vhp/bin/vhusbdx86_64 ]]; then
   sha256sum /home/.vhp/bin/vhusbdx86_64
 fi
 
-section 'Passwordless sudo authorization (does not execute the helper)'
+section 'Passwordless sudo authentication (harmless probe, no cached credentials)'
+if sudo -k -n /home/.vhp/bin/vhp-root check; then
+  echo 'OK: harmless helper check succeeded without cached authentication'
+else
+  warn 'Passwordless helper check failed; rerun setup and inspect sudo rule ordering'
+fi
+
+section 'Listed sudo permissions (does not start or stop VHP)'
 for action in start stop keepalive; do
   if sudo -n -l /home/.vhp/bin/vhp-root "$action"; then
-    echo "OK: $action authorized (the installed rule should say NOPASSWD)"
+    echo "Listed permission: $action (listing alone does not prove passwordless access)"
   else
     warn "Cannot confirm $action authorization; rerun ./setup.sh"
   fi

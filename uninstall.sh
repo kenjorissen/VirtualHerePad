@@ -17,7 +17,7 @@ sudo -v
 if [[ $(systemctl show -p LoadState --value vhp.service) != not-found ]]; then
   sudo systemctl stop vhp.service
 fi
-sudo rm -f -- /etc/sudoers.d/vhp /etc/systemd/system/vhp.service
+sudo rm -f -- /etc/sudoers.d/zz-vhp /etc/sudoers.d/vhp /etc/systemd/system/vhp.service
 sudo rm -rf -- /home/.vhp/bin /run/vhp
 sudo systemctl daemon-reload
 if "$purge"; then

@@ -38,6 +38,7 @@ class UninstallTests(unittest.TestCase):
         self.assertNotIn('/usr/local', commands)
         self.assertLess(commands.index('systemctl stop'), commands.index('rm -f'))
         self.assertIn('/etc/sudoers.d/vhp', commands)
+        self.assertIn('/etc/sudoers.d/zz-vhp', commands)
 
     def test_purge_is_explicit(self):
         result, commands = self.run_uninstall(['--purge-settings'])

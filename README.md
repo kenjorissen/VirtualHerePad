@@ -124,7 +124,10 @@ sudo -n /home/.vhp/bin/vhp-root stop
 ## Privileges and cleanup
 
 Setup installs root-owned code under `/home/.vhp/bin`, a systemd service,
-and a sudoers rule allowing only that service's fixed **start/stop/keepalive** operations.
+and `/etc/sudoers.d/zz-vhp`, allowing only fixed **start/stop/keepalive/check**
+operations. The late-sorting filename places it after SteamOS's general sudo
+rule. The `check` operation does nothing except exit successfully; setup and
+diagnostics run it without cached authentication to verify passwordless access.
 Heartbeats contain only system uptime and live in root-only `/run/vhp`; no
 caller-supplied paths or commands are accepted.
 The running service never executes code or reads configuration from the writable

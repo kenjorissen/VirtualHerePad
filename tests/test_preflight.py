@@ -40,6 +40,23 @@ class PreflightTests(unittest.TestCase):
         for check in ('sudo -v', 'VHP_PREFLIGHT', 'steam-shortcut.py --check', 'sha256sum konsole'):
             self.assertLess(source.index(check), download)
 
+    def test_passwordless_probe_ignores_cached_authentication(self):
+        source = (ROOT / 'setup.sh').read_text()
+        self.assertIn('/etc/sudoers.d/zz-vhp', source)
+        self.assertIn('sudo rm -f -- /etc/sudoers.d/vhp', source)
+        self.assertIn('sudo -k -n /home/.vhp/bin/vhp-root check', source)
+        self.assertIn('sudo -k -n /home/.vhp/bin/vhp-root check', (ROOT / 'doctor.sh').read_text())
+
+    def test_helper_check_is_harmless(self):
+        source = (ROOT / 'vhp-root').read_text().replace(
+            '[[ $EUID == 0 && $# == 1 ]]', '[[ $# == 1 ]]')
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(['bash', '-c', source, 'vhp-root', 'check'],
+                                    cwd=directory, capture_output=True, text=True, timeout=3)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, '')
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
     def test_metadata_without_git_checkout(self):
         source = (ROOT / 'setup.sh').read_text()
         block = 'commit=unknown' + source.split('commit=unknown', 1)[1].split("\nprintf '%s ALL=", 1)[0]
