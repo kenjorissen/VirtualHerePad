@@ -19,7 +19,12 @@ git pull
 The initial clone has no need for `git pull`. Setup asks for your sudo password
 and downloads the current x86-64 server directly from VirtualHere over HTTPS.
 Set a password with `passwd` first if your Deck doesn't have one.
-Dependencies: Bash, curl, sudo, systemd, and standard GNU utilities.
+Dependencies: Bash, curl, sudo, systemd, Konsole, and standard GNU utilities.
+Before downloading, setup checks required tools, sudo access, writable install
+paths, and Steam account discovery. Missing/ambiguous Steam accounts or missing
+Python produce warnings rather than blocking installation without a shortcut.
+Preflight does not shut down Steam. The final summary reports installation and
+shortcut status separately and tells you what to do next.
 
 Setup leaves SteamOS's read-only system partition protected: binaries go under
 `/home/.vhp/bin`, settings under `/home/.vhp/data`, and only the systemd unit and
@@ -43,15 +48,25 @@ verified release checksum. The downloaded binary is not stored in Git.
 
 ## Steam
 
-Setup offers to add or update a **VHP** non-Steam shortcut. First fully exit Steam
-in Desktop Mode (**Steam > Exit**, not just closing its window). Restart Steam
-after setup. Python 3 is required only for shortcut creation; no pip packages
-are needed. If Python is missing, setup skips this step with a message.
+Run setup from **Desktop Mode**. It offers to add or update a **VHP** non-Steam
+shortcut. If Steam is running, the helper asks permission to close it with
+`steam -shutdown`. Save games and finish downloads before accepting. It waits
+up to 30 seconds after the shutdown command completes, never force-kills Steam,
+and leaves shortcuts unchanged if you decline or shutdown fails. Noninteractive
+runs never shut Steam down automatically.
+
+You can also exit Steam yourself (**Steam > Exit**, not just closing its window).
+After a successful shortcut update, the helper offers to reopen Steam. It never
+launches Steam automatically in noninteractive runs. Python 3 is required only
+for shortcut creation; no pip packages are needed. If Python is missing, setup
+skips this step with a message.
 
 You can also create/update the shortcut separately, as your normal user:
 
 ```bash
 python3 steam-shortcut.py
+# Check account discovery without editing shortcuts or stopping Steam:
+python3 steam-shortcut.py --check
 # If multiple accounts have userdata on this Deck, choose the ID it lists:
 python3 steam-shortcut.py --account 12345678
 ```
@@ -97,8 +112,13 @@ sudo -n /home/.vhp/bin/vhp-root stop
 - Status: `systemctl status vhp.service`
 - Read-only diagnostic report: `./doctor.sh` (run as your normal user).
   Checks tools, installed ownership/permissions, sudo authorization, service,
-  backlight, sleep inhibitors, and recent logs. Review logs before sharing them;
-  the script does not read private server configuration. It exits nonzero when
+  backlight, sleep inhibitors, and recent logs. It also shows the installed VHP
+  commit, installation time, and recorded/actual VirtualHere SHA-256 hashes.
+  Local modifications at install time add `-dirty` to the commit; non-Git copies
+  report `unknown`. Metadata lives in `/home/.vhp/bin/build-info.txt` and does not
+  contain usernames, license data, or connection credentials.
+  Review logs before sharing them; the script does not read private server
+  configuration. It exits nonzero when
   it finds warnings. An inactive service alone is normal.
 
 ## Privileges and cleanup

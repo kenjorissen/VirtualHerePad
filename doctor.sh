@@ -37,6 +37,17 @@ for path in /home/.vhp/bin/vhp-root /home/.vhp/bin/vhusbdx86_64; do
   [[ -x $path ]] || warn "Not executable: $path"
 done
 
+section 'Installed version (not the current checkout)'
+if [[ -r /home/.vhp/bin/build-info.txt ]]; then
+  head -n 3 /home/.vhp/bin/build-info.txt
+else
+  warn 'Installed version metadata is missing; rerun ./setup.sh to record it'
+fi
+if [[ -r /home/.vhp/bin/vhusbdx86_64 ]]; then
+  echo 'Actual installed VirtualHere SHA-256 (compare with VIRTUALHERE_SHA256 above):'
+  sha256sum /home/.vhp/bin/vhusbdx86_64
+fi
+
 section 'Passwordless sudo authorization (does not execute the helper)'
 for action in start stop keepalive; do
   if sudo -n -l /home/.vhp/bin/vhp-root "$action"; then

@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import struct
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -73,10 +74,72 @@ class ShortcutTests(unittest.TestCase):
             self.assertFalse(list(path.parent.glob('.vhp-shortcuts-*')))
 
     def test_refuses_running_steam(self):
-        with patch('sys.argv', ['steam-shortcut.py']), patch.object(shortcut.os, 'geteuid', return_value=1000), patch.object(shortcut, 'steam_running', return_value=True), patch.object(shortcut, 'save') as save:
-            with self.assertRaises(SystemExit):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            (home / '.local/share/Steam/userdata/123').mkdir(parents=True)
+            with patch.object(shortcut.Path, 'home', return_value=home), patch('sys.argv', ['steam-shortcut.py']), patch.object(shortcut.os, 'geteuid', return_value=1000), patch.object(shortcut, 'steam_running', return_value=True) as running, patch.object(shortcut.sys.stdin, 'isatty', return_value=False), patch.object(shortcut, 'save') as save:
+                with self.assertRaises(SystemExit):
+                    shortcut.main()
+                running.assert_called_once()
+                save.assert_not_called()
+
+    def test_shutdown_declined(self):
+        with patch.object(shortcut, 'steam_running', return_value=True), patch.object(shortcut.sys.stdin, 'isatty', return_value=True), patch('builtins.input', return_value='n'), patch.object(shortcut.subprocess, 'run') as run:
+            with self.assertRaisesRegex(ValueError, 'left running'):
+                shortcut.ensure_steam_closed()
+            run.assert_not_called()
+
+    def test_noninteractive_does_not_shutdown(self):
+        with patch.object(shortcut, 'steam_running', return_value=True), patch.object(shortcut.sys.stdin, 'isatty', return_value=False), patch.object(shortcut.subprocess, 'run') as run:
+            with self.assertRaisesRegex(ValueError, 'Fully exit Steam'):
+                shortcut.ensure_steam_closed()
+            run.assert_not_called()
+
+    def test_graceful_shutdown_waits_for_exit(self):
+        with patch.object(shortcut, 'steam_running', side_effect=[True, True, False]), patch.object(shortcut.sys.stdin, 'isatty', return_value=True), patch('builtins.input', return_value='yes'), patch.object(shortcut.shutil, 'which', return_value='/usr/bin/steam'), patch.object(shortcut.subprocess, 'run') as run, patch.object(shortcut.time, 'sleep') as sleep:
+            shortcut.ensure_steam_closed()
+            self.assertEqual(run.call_args.args[0], ['/usr/bin/steam', '-shutdown'])
+            self.assertEqual(run.call_args.kwargs['timeout'], 15)
+            sleep.assert_called_once_with(0.5)
+
+    def test_shutdown_timeout(self):
+        with patch.object(shortcut, 'steam_running', return_value=True), patch.object(shortcut.sys.stdin, 'isatty', return_value=True), patch('builtins.input', return_value='y'), patch.object(shortcut.shutil, 'which', return_value='/usr/bin/steam'), patch.object(shortcut.subprocess, 'run'), patch.object(shortcut.time, 'monotonic', side_effect=[0, 31]):
+            with self.assertRaisesRegex(ValueError, 'did not exit'):
+                shortcut.ensure_steam_closed()
+
+    def test_shutdown_command_failure(self):
+        with patch.object(shortcut, 'steam_running', return_value=True), patch.object(shortcut.sys.stdin, 'isatty', return_value=True), patch('builtins.input', return_value='y'), patch.object(shortcut.shutil, 'which', return_value='/usr/bin/steam'), patch.object(shortcut.subprocess, 'run', side_effect=subprocess.TimeoutExpired('steam', 15)):
+            with self.assertRaisesRegex(ValueError, 'Could not request'):
+                shortcut.ensure_steam_closed()
+
+    def test_reopen_requires_confirmation(self):
+        with patch.object(shortcut.sys.stdin, 'isatty', return_value=True), patch.object(shortcut, 'steam_running', return_value=False), patch('builtins.input', return_value='n'), patch.object(shortcut.subprocess, 'Popen') as popen:
+            shortcut.offer_start_steam()
+            popen.assert_not_called()
+
+    def test_reopen_detaches_steam(self):
+        with patch.object(shortcut.sys.stdin, 'isatty', return_value=True), patch.object(shortcut, 'steam_running', return_value=False), patch('builtins.input', return_value='yes'), patch.object(shortcut.shutil, 'which', return_value='/usr/bin/steam'), patch.object(shortcut.subprocess, 'Popen') as popen:
+            shortcut.offer_start_steam()
+            self.assertEqual(popen.call_args.args[0], ['/usr/bin/steam'])
+            self.assertTrue(popen.call_args.kwargs['start_new_session'])
+            self.assertEqual(popen.call_args.kwargs['stdin'], subprocess.DEVNULL)
+
+    def test_reopen_noninteractive_is_skipped(self):
+        with patch.object(shortcut.sys.stdin, 'isatty', return_value=False), patch.object(shortcut.subprocess, 'Popen') as popen:
+            shortcut.offer_start_steam()
+            popen.assert_not_called()
+
+    def test_check_does_not_stop_or_launch_steam(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            account = home / '.local/share/Steam/userdata/123'
+            account.mkdir(parents=True)
+            with patch.object(shortcut.Path, 'home', return_value=home), patch.object(shortcut.os, 'geteuid', return_value=1000), patch('sys.argv', ['steam-shortcut.py', '--check']), patch.object(shortcut, 'ensure_steam_closed') as close, patch.object(shortcut, 'offer_start_steam') as start, patch.object(shortcut, 'save') as save:
                 shortcut.main()
-            save.assert_not_called()
+                close.assert_not_called()
+                start.assert_not_called()
+                save.assert_not_called()
+                self.assertFalse((account / 'config').exists())
 
     def test_multiple_accounts_requires_selection(self):
         with tempfile.TemporaryDirectory() as directory:

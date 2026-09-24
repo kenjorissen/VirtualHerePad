@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 import shutil
 import struct
+import subprocess
+import sys
 import tempfile
 import time
 import zlib
@@ -127,6 +129,61 @@ def steam_running():
     return False
 
 
+def ensure_steam_closed():
+    if not steam_running():
+        return
+    instruction = 'Fully exit Steam first (Steam > Exit in Desktop Mode), then rerun'
+    if not sys.stdin.isatty():
+        raise ValueError(instruction)
+    print('Steam is running. Save your games and finish any downloads first.')
+    print('Run this from Desktop Mode; closing Steam in Gaming Mode can end your session.')
+    try:
+        answer = input('Shut down Steam gracefully to update the shortcut? [y/N] ')
+    except (EOFError, KeyboardInterrupt):
+        raise ValueError('Shutdown cancelled; shortcut not changed') from None
+    if answer.strip().lower() not in ('y', 'yes'):
+        raise ValueError('Steam left running; shortcut not changed. ' + instruction)
+    steam = shutil.which('steam')
+    if steam is None:
+        raise ValueError('Steam command not found. ' + instruction)
+    print('Requesting Steam shutdown...')
+    try:
+        subprocess.run([steam, '-shutdown'], check=True, timeout=15,
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ValueError('Could not request Steam shutdown. ' + instruction) from exc
+    deadline = time.monotonic() + 30
+    while steam_running():
+        if time.monotonic() >= deadline:
+            raise ValueError('Steam did not exit within 30 seconds; shortcut not changed. ' + instruction)
+        time.sleep(0.5)
+    print('Steam has exited.')
+
+
+def offer_start_steam():
+    if not sys.stdin.isatty() or steam_running():
+        return
+    try:
+        answer = input('Open Steam now to see the VHP shortcut? [y/N] ')
+    except (EOFError, KeyboardInterrupt):
+        print('\nSteam left closed. Open it when ready.')
+        return
+    if answer.strip().lower() not in ('y', 'yes'):
+        print('Steam left closed. Open it when ready.')
+        return
+    steam = shutil.which('steam')
+    if steam is None:
+        print('Steam command not found; open Steam manually.')
+        return
+    try:
+        subprocess.Popen([steam], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+        print('Steam launch requested.')
+    except OSError as exc:
+        print(f'Shortcut is ready, but Steam could not be launched: {exc}')
+
+
 def save(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
@@ -150,11 +207,10 @@ def save(path, data):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--account', help='numeric Steam userdata directory name')
+    parser.add_argument('--check', action='store_true', help='check account/shortcut location without changing files or stopping Steam')
     args = parser.parse_args()
     if os.geteuid() == 0:
         parser.error('Run as your normal user, not with sudo')
-    if steam_running():
-        parser.error('Fully exit Steam first (Steam > Exit in Desktop Mode), then rerun')
     roots = [Path.home() / '.local/share/Steam', Path.home() / '.steam/steam']
     root = next((p for p in roots if (p / 'userdata').is_dir()), None)
     if root is None:
@@ -170,15 +226,24 @@ def main():
     else:
         parser.error('Choose --account ID from userdata IDs: ' + ', '.join(accounts))
     path = root / 'userdata' / account / 'config/shortcuts.vdf'
+    if args.check:
+        print(f'Steam account ready: {account}; shortcuts: {path}')
+        return
+    try:
+        ensure_steam_closed()
+    except ValueError as exc:
+        parser.error(str(exc))
     original = path.read_bytes() if path.exists() else b''
     changed = update(original, Path(__file__).resolve().parent)
     if changed == original:
         print('VHP shortcut is already up to date.')
+        offer_start_steam()
         return
     if steam_running():
         parser.error('Steam started during setup; shortcut not changed')
     save(path, changed)
     print(f'VHP shortcut installed for account {account}. Restart Steam to see it.')
+    offer_start_steam()
 
 
 if __name__ == '__main__':
