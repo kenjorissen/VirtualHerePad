@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+"""Add VHP to Steam's binary shortcuts.vdf without third-party dependencies."""
+import argparse
+import os
+from pathlib import Path
+import shutil
+import struct
+import tempfile
+import time
+import zlib
+
+
+# Preserve original field types, order, and bytes, including unrelated shortcuts.
+def decode(data):
+    pos = 0
+
+    def string():
+        nonlocal pos
+        end = data.index(b'\0', pos)
+        value = data[pos:end]
+        pos = end + 1
+        return value
+
+    def obj(depth=0):
+        nonlocal pos
+        if depth > 64:
+            raise ValueError('VDF nesting is too deep')
+        fields = []
+        while pos < len(data):
+            kind = data[pos]
+            pos += 1
+            if kind == 8:
+                return fields
+            key = string()
+            if kind == 0:
+                value = obj(depth + 1)
+            elif kind == 1:
+                value = string()
+            elif kind in (2, 3, 4, 7):
+                size = 8 if kind == 7 else 4
+                value = data[pos:pos + size]
+                if len(value) != size:
+                    raise ValueError('Truncated VDF value')
+                pos += size
+            else:
+                raise ValueError(f'Unsupported VDF type {kind}; file not changed')
+            fields.append((kind, key, value))
+        raise ValueError('Missing VDF end marker')
+
+    result = obj()
+    if pos != len(data):
+        raise ValueError('Unexpected trailing VDF data')
+    return result
+
+
+def encode(fields):
+    return b''.join(bytes([kind]) + key + b'\0' +
+                    (encode(value) if kind == 0 else
+                     value + b'\0' if kind == 1 else value)
+                    for kind, key, value in fields) + b'\x08'
+
+
+def text(key, value):
+    return (1, key.encode(), value.encode())
+
+
+def number(key, value):
+    return (2, key.encode(), struct.pack('<I', value))
+
+
+def update(data, checkout):
+    root = decode(data) if data else [(0, b'shortcuts', [])]
+    containers = [v for t, k, v in root if t == 0 and k == b'shortcuts']
+    if len(containers) != 1:
+        raise ValueError('Expected one shortcuts object')
+    entries = containers[0]
+    matches = []
+    for i, (kind, key, fields) in enumerate(entries):
+        if kind != 0:
+            raise ValueError('Unexpected non-object shortcut')
+        values = {k: v for t, k, v in fields if t == 1}
+        # Also adopt the existing manually-created shortcut, regardless of name.
+        if (values.get(b'appname', b'').lower() == b'vhp' or
+                b'/vhp.sh' in values.get(b'LaunchOptions', b'') or
+                b'/vhp.sh' in values.get(b'exe', b'')):
+            matches.append(i)
+    if len(matches) > 1:
+        raise ValueError('Multiple VHP shortcuts found; remove duplicates in Steam first')
+    path = str(checkout)
+    if any(c in path for c in '\n\r\0"\\`$'):
+        raise ValueError('Checkout path contains unsupported launch-option characters')
+    desired = [text('appname', 'VHP'), text('exe', '"/usr/bin/env"'),
+               text('StartDir', f'"{path}"'),
+               text('LaunchOptions', f'-u LD_PRELOAD konsole --fullscreen -e "{path}/vhp.sh"'),
+               number('AllowOverlay', 1)]
+    if matches:
+        index = matches[0]
+        kind, key, fields = entries[index]
+        replacements = {k: (t, k, v) for t, k, v in desired}
+        updated = [replacements.pop(k, (t, k, v)) for t, k, v in fields]
+        updated.extend(replacements.values())
+        # Keep appid and other user settings (including artwork associations).
+        entries[index] = (kind, key, updated)
+    else:
+        used = {k for _, k, _ in entries}
+        index = 0
+        while str(index).encode() in used:
+            index += 1
+        appid = zlib.crc32(b'"/usr/bin/env"VHP') | 0x80000000
+        fields = [number('appid', appid)] + desired + [
+            text('icon', ''), text('ShortcutPath', ''), number('IsHidden', 0),
+            number('AllowDesktopConfig', 1), number('OpenVR', 0),
+            number('Devkit', 0), text('DevkitGameID', ''),
+            number('DevkitOverrideAppID', 0), number('LastPlayTime', 0),
+            text('FlatpakAppID', ''), (0, b'tags', [])]
+        entries.append((0, str(index).encode(), fields))
+    return encode(root)
+
+
+def steam_running():
+    for proc in Path('/proc').glob('[0-9]*/comm'):
+        try:
+            if proc.read_text().strip().lower() in ('steam', 'steam.exe', 'steamwebhelper'):
+                return True
+        except (OSError, UnicodeError):
+            pass
+    return False
+
+
+def save(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        fd, backup = tempfile.mkstemp(prefix=f'{path.name}.bak-{time.strftime("%Y%m%d-%H%M%S")}-', dir=path.parent)
+        os.close(fd)
+        shutil.copy2(path, backup)
+        print(f'Backup: {backup}')
+    fd, temporary = tempfile.mkstemp(prefix='.vhp-shortcuts-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if path.exists():
+            shutil.copymode(path, temporary)
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--account', help='numeric Steam userdata directory name')
+    args = parser.parse_args()
+    if os.geteuid() == 0:
+        parser.error('Run as your normal user, not with sudo')
+    if steam_running():
+        parser.error('Fully exit Steam first (Steam > Exit in Desktop Mode), then rerun')
+    roots = [Path.home() / '.local/share/Steam', Path.home() / '.steam/steam']
+    root = next((p for p in roots if (p / 'userdata').is_dir()), None)
+    if root is None:
+        parser.error('Steam userdata not found; log in to Steam once first')
+    accounts = sorted(p.name for p in (root / 'userdata').iterdir()
+                      if p.is_dir() and p.name.isdigit() and p.name != '0')
+    if args.account:
+        if args.account not in accounts:
+            parser.error('Unknown account; available userdata IDs: ' + ', '.join(accounts))
+        account = args.account
+    elif len(accounts) == 1:
+        account = accounts[0]
+    else:
+        parser.error('Choose --account ID from userdata IDs: ' + ', '.join(accounts))
+    path = root / 'userdata' / account / 'config/shortcuts.vdf'
+    original = path.read_bytes() if path.exists() else b''
+    changed = update(original, Path(__file__).resolve().parent)
+    if changed == original:
+        print('VHP shortcut is already up to date.')
+        return
+    if steam_running():
+        parser.error('Steam started during setup; shortcut not changed')
+    save(path, changed)
+    print(f'VHP shortcut installed for account {account}. Restart Steam to see it.')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError, RecursionError) as exc:
+        raise SystemExit(f'Cannot update Steam shortcut: {exc}') from exc

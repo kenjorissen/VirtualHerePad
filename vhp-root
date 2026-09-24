@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Installed root-owned by setup.sh; sudo permits only start/stop/keepalive.
+set -euo pipefail
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+[[ $EUID == 0 && $# == 1 ]] || exit 1
+LEASE=/run/vhp/lease
+heartbeat() {
+  local uptime rest temporary
+  read -r uptime rest < /proc/uptime
+  temporary=$(mktemp /run/vhp/lease.XXXXXX)
+  printf '%s\n' "${uptime%%.*}" > "$temporary"
+  mv -f -- "$temporary" "$LEASE"
+}
+case "$1" in
+  keepalive)
+    # The service owns this root-only runtime directory.
+    [[ -d /run/vhp ]] || exit 1
+    heartbeat
+    exit 0
+    ;;
+  start|stop)
+    exec /usr/bin/systemctl "$1" vhp.service
+    ;;
+  run) ;;
+  *) exit 1 ;;
+esac
+
+BRIGHTNESS_FILE=/sys/class/backlight/amdgpu_bl0/brightness
+brightness=''
+child=''
+cleanup() {
+  trap - EXIT INT TERM
+  # Restore first, even if the USB server takes time to terminate.
+  if [[ -n "$brightness" ]]; then
+    printf '%s\n' "$brightness" > "$BRIGHTNESS_FILE" || true
+  fi
+  if [[ -n "$child" ]]; then
+    kill -TERM "$child" 2>/dev/null || true
+    for _ in 1 2 3; do
+      kill -0 "$child" 2>/dev/null || break
+      sleep 1
+    done
+    kill -KILL "$child" 2>/dev/null || true
+    wait "$child" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+trap 'exit 0' INT TERM
+
+# Give the launcher a startup grace period, then require regular heartbeats.
+heartbeat
+if [[ -r "$BRIGHTNESS_FILE" && -w "$BRIGHTNESS_FILE" ]]; then
+  brightness=$(< "$BRIGHTNESS_FILE")
+  printf '0\n' > "$BRIGHTNESS_FILE"
+fi
+
+/usr/local/lib/vhp/vhusbdx86_64 -c /var/lib/vhp/config.ini &
+child=$!
+while kill -0 "$child" 2>/dev/null; do
+  read -r uptime _ < /proc/uptime
+  last=$(< "$LEASE")
+  if [[ ! $last =~ ^[0-9]+$ ]] || (( ${uptime%%.*} - last >= 10 )); then
+    echo 'Launcher heartbeat expired; stopping VHP.'
+    exit 0
+  fi
+  sleep 1
+done
+wait "$child"

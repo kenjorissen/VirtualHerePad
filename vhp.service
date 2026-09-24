@@ -1,0 +1,16 @@
+[Unit]
+Description=VirtualHere Pad
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/lib/vhp
+RuntimeDirectory=vhp
+RuntimeDirectoryMode=0700
+ExecStart=/usr/bin/systemd-inhibit --what=sleep --mode=block --who=VHP "--why=Sharing Steam Deck controller" /usr/local/lib/vhp/vhp-root run
+KillMode=control-group
+KillSignal=SIGTERM
+TimeoutStopSec=15
+UMask=0077
+
+# Deliberately not enabled at boot: the Steam launcher controls its lifetime.

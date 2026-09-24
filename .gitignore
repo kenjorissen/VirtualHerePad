@@ -1,0 +1,26 @@
+# Downloaded binary, private license/connection settings, and runtime data
+/virtualhere/
+*.log
+/virtualhere_pid
+/brightness_bak
+# Generated Python files
+__pycache__/
+*.py[cod]
+
+# Local secrets, Steam data, backups, and downloaded server binaries
+.env
+.env.*
+*.pem
+*.key
+*.vdf
+*.bak
+*.bak-*
+vhusbd*
+
+# Editor/OS clutter
+*~
+*.swp
+*.swo
+.DS_Store
+.idea/
+.vscode/
