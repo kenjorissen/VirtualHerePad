@@ -53,7 +53,7 @@ done
 
 section 'Installed version (not the current checkout)'
 if [[ -r /home/.vhp/bin/build-info.txt ]]; then
-  head -n 3 /home/.vhp/bin/build-info.txt
+  head -n 5 /home/.vhp/bin/build-info.txt
 else
   warn 'Installed version metadata is missing; rerun ./setup.sh to record it'
 fi

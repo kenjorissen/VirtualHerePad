@@ -61,6 +61,34 @@ Steam runs the installed `vhp-gui.sh` wrapper and `vhp.sh` under
 You do **not** need to run it separately during setup. Once the shortcut has
 been updated, the checkout can be moved or deleted without breaking normal use.
 
+Setup automatically downloads and verifies VirtualHere. To supply the file
+instead, see [Manual server download](#manual-server-download).
+
+### Manual server download
+
+Run `./setup.sh --manual-download` to disable downloading. If the file is missing,
+setup prints the download URL and required location, then exits without installing.
+
+Download the **generic Linux x86-64** server from the
+[VirtualHere server page](https://www.virtualhere.com/usb_server_software) and save
+it as **`~/Downloads/vhusbdx86_64`**, owned by your normal user. From the checkout:
+
+```bash
+chmod 600 ~/Downloads/vhusbdx86_64
+./setup.sh --manual-download
+```
+
+Only read permission is needed; do not run the file or give it executable
+permission yourself. **Manual mode does not automatically verify VirtualHere's
+checksum. Verify the file against the publisher's
+[SHA1SUM](https://www.virtualhere.com/sites/default/files/usbserver/SHA1SUM)
+before installing.** Setup warns about this; it does not require a hash file.
+
+Setup installs the file at `/home/.vhp/bin/vhusbdx86_64` as **root:root, mode
+0755**. Do not copy it directly into the privileged directory. For another local
+path, use `VHP_SERVER_PATH="/path/to/vhusbdx86_64" ./setup.sh --manual-download`.
+An independently trusted `VHP_SHA256` can also be supplied for an automatic check.
+
 ## Windows client quick start
 
 1. Open the official [VirtualHere USB Client download page](https://www.virtualhere.com/usb_client_software).
@@ -363,15 +391,19 @@ VirtualHere still runs as root for USB access. Root ownership is not a sandbox
 against server vulnerabilities. Use a trusted network; VHP does not configure
 firewall rules or server authentication.
 
-Setup downloads the current x86-64 server from VirtualHere over HTTPS. To require
-a known trusted checksum:
+By default, setup downloads the generic x86-64 server and VirtualHere's official
+[SHA1SUM](https://www.virtualhere.com/sites/default/files/usbserver/SHA1SUM) over
+HTTPS. It requires exactly one matching filename entry and a matching SHA-1
+before stopping the running service or installing files. Missing, malformed,
+ambiguous, or mismatched checksums abort installation. SHA-1 is the publisher's
+available checksum, not a modern signature; this still trusts VirtualHere's
+HTTPS site. [Manual mode](#manual-server-download) explicitly leaves upstream
+verification to the user and warns before installation.
 
-```bash
-VHP_SHA256=<trusted-sha256> ./setup.sh
-```
-
-Without that, HTTPS and the publisher are trusted rather than an independently
-verified release checksum. The proprietary binary is not included in Git.
+`VHP_SHA256=<trusted-sha256> ./setup.sh` adds an independently supplied SHA-256
+check; it never bypasses the official check for automatic downloads. It also
+works in manual mode. Setup records the verification method and actual SHA-256
+for diagnostics. The proprietary binary is not included in Git or GitHub releases.
 
 ## Development
 
@@ -395,7 +427,8 @@ for example `make check PYTHON=python3.13`.
 The Makefile pins Ruff and shfmt-py exactly so formatting is consistent. To
 upgrade, change their versions, run `make fmt` and `make check`, and review the
 diff. Python, make, and ShellCheck use system versions rather than exact pins.
-These development pins do not control the downloaded VirtualHere server.
+These development pins do not select the VirtualHere server version; automatic
+installation verifies the publisher's current download against its SHA1SUM.
 
 Tests use temporary files and mock services, not USB devices or root access.
 They do not install/start the real VHP service. Shortcut tests reject unmocked

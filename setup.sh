@@ -4,6 +4,47 @@ set -euo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 cd -- "$(dirname -- "$(readlink -f -- "$0")")"
 
+# BEGIN VIRTUALHERE_SOURCES
+url=https://www.virtualhere.com/sites/default/files/usbserver/vhusbdx86_64
+checksum_url=https://www.virtualhere.com/sites/default/files/usbserver/SHA1SUM
+# END VIRTUALHERE_SOURCES
+
+# BEGIN DOWNLOAD_OPTIONS
+server_path=${VHP_SERVER_PATH:-}
+case "${1:-}" in
+  '') [[ $# == 0 ]] || exit 1 ;;
+  --manual-download)
+    [[ $# == 1 ]] || {
+      echo 'Usage: ./setup.sh [--manual-download]' >&2
+      exit 1
+    }
+    server_path=${server_path:-${HOME:?HOME must be set}/Downloads/vhusbdx86_64}
+    ;;
+  --help | -h)
+    echo 'Usage: ./setup.sh [--manual-download]'
+    echo 'Default: download from VirtualHere and verify its official SHA1SUM.'
+    echo 'Manual: use ~/Downloads/vhusbdx86_64 without downloading; verify it yourself first.'
+    echo 'VHP_SERVER_PATH selects another local binary (also skips downloading).'
+    exit 0
+    ;;
+  *)
+    echo 'Usage: ./setup.sh [--manual-download]' >&2
+    exit 1
+    ;;
+esac
+if [[ -n $server_path ]]; then
+  echo 'WARNING: manual mode does not automatically verify the upstream checksum.' >&2
+  echo "Verify the executable against $checksum_url before installing it." >&2
+  if [[ ! -f $server_path || ! -r $server_path ]]; then
+    echo 'No download will be made. Supply the generic Linux x86-64 server:' >&2
+    printf '  Download: %s\n  Save as: %s\n' "$url" "$server_path" >&2
+    echo 'Owner-readable permissions (0600) are sufficient; no executable bit is needed.' >&2
+    echo 'Then rerun the same setup command. No hash file is required in manual mode.' >&2
+    exit 1
+  fi
+fi
+# END DOWNLOAD_OPTIONS
+
 if [[ $EUID == 0 ]]; then
   echo 'Run ./setup.sh as your normal user, not with sudo.' >&2
   exit 1
@@ -19,7 +60,7 @@ user=$(id -un)
   exit 1
 }
 echo '== Preflight checks =='
-for cmd in curl sudo systemctl systemd-inhibit visudo install sha256sum konsole python3; do
+for cmd in curl sudo systemctl systemd-inhibit visudo install sha1sum sha256sum konsole python3; do
   command -v "$cmd" >/dev/null || {
     echo "Missing dependency: $cmd" >&2
     exit 1
@@ -63,21 +104,81 @@ echo 'Its current setting is not checked or changed. You can leave it enabled.'
 
 tmp=$(mktemp -d)
 trap 'rm -rf -- "$tmp"' EXIT
-url=https://www.virtualhere.com/sites/default/files/usbserver/vhusbdx86_64
-echo "Downloading VirtualHere from $url"
-curl --fail --location --proto '=https' --proto-redir '=https' \
-  --retry 3 --connect-timeout 20 --max-time 180 \
-  --output "$tmp/vhusbdx86_64" "$url"
+# BEGIN SERVER_DOWNLOAD
+if [[ -n $server_path ]]; then
+  echo 'Using local VirtualHere server (no downloads or upstream checksum verification).'
+  [[ -f $server_path && -r $server_path ]] || {
+    echo 'Local server file is not readable.' >&2
+    exit 1
+  }
+  cp -- "$server_path" "$tmp/vhusbdx86_64"
+else
+  echo 'Downloading VirtualHere server and official SHA1SUM over HTTPS.'
+  curl --fail --location --proto '=https' --proto-redir '=https' \
+    --retry 3 --connect-timeout 20 --max-time 180 --max-filesize 65536 \
+    --output "$tmp/SHA1SUM" "$checksum_url"
+  curl --fail --location --proto '=https' --proto-redir '=https' \
+    --retry 3 --connect-timeout 20 --max-time 180 \
+    --output "$tmp/vhusbdx86_64" "$url"
+fi
 [[ -s "$tmp/vhusbdx86_64" ]] || {
-  echo 'Empty download.' >&2
+  echo 'Empty server file.' >&2
   exit 1
 }
-if [[ -n ${VHP_SHA256:-} ]]; then
-  printf '%s  %s\n' "$VHP_SHA256" "$tmp/vhusbdx86_64" | sha256sum --check -
-else
-  echo 'Download SHA-256 (HTTPS trusted; no pinned checksum supplied):'
-  sha256sum "$tmp/vhusbdx86_64"
+expected_sha1=not-verified
+verification_source=manual-unverified
+if [[ -z $server_path ]]; then
+  # Parse data only, select exactly one exact filename, and never trust manifest paths.
+  expected_sha1=$(
+    python3 -I - "$tmp/SHA1SUM" <<'VHP_CHECKSUM'
+import re
+import sys
+
+try:
+    with open(sys.argv[1], "rb") as stream:
+        data = stream.read(65537)
+    if len(data) > 65536:
+        raise ValueError("SHA1SUM exceeds 64 KiB")
+    matches = []
+    for line in data.decode("ascii").splitlines():
+        if not line.strip():
+            continue
+        record = re.fullmatch(r"([0-9a-fA-F]{40}) [ *](\S+)", line)
+        if record is None:
+            raise ValueError("malformed SHA1SUM entry")
+        if record[2] == "vhusbdx86_64":
+            matches.append(record[1].lower())
+    if len(matches) != 1:
+        raise ValueError("expected exactly one vhusbdx86_64 checksum")
+    print(matches[0])
+except (OSError, ValueError) as exc:
+    print(f"Invalid VirtualHere SHA1SUM: {exc}", file=sys.stderr)
+    sys.exit(1)
+VHP_CHECKSUM
+  )
+  if ! printf '%s  %s\n' "$expected_sha1" "$tmp/vhusbdx86_64" | sha1sum --check -; then
+    echo 'VirtualHere checksum mismatch. Installation aborted; the running service is unchanged.' >&2
+    echo 'Obtain the matching server and SHA1SUM directly from VirtualHere, then retry.' >&2
+    exit 1
+  fi
+  verification_source=upstream-sha1
 fi
+if [[ -n ${VHP_SHA256:-} ]]; then
+  [[ $VHP_SHA256 =~ ^[[:xdigit:]]{64}$ ]] || {
+    echo 'Invalid VHP_SHA256.' >&2
+    exit 1
+  }
+  printf '%s  %s\n' "$VHP_SHA256" "$tmp/vhusbdx86_64" | sha256sum --check -
+  if [[ -n $server_path ]]; then
+    verification_source='user-sha256'
+  else verification_source='upstream-sha1+user-sha256'; fi
+fi
+if [[ $verification_source == manual-unverified ]]; then
+  echo 'WARNING: installing a manually supplied executable without automatic checksum verification.' >&2
+else
+  echo "Verified VirtualHere ($verification_source)."
+fi
+# END SERVER_DOWNLOAD
 
 commit=unknown
 if command -v git >/dev/null && [[ $(git rev-parse --show-toplevel 2>/dev/null || true) == "$PWD" ]]; then
@@ -87,6 +188,8 @@ fi
 binary_hash=$(sha256sum "$tmp/vhusbdx86_64")
 printf 'VHP_COMMIT=%s\nVIRTUALHERE_SHA256=%s\nINSTALLED_UTC=%s\n' \
   "$commit" "${binary_hash%% *}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$tmp/build-info.txt"
+printf 'VIRTUALHERE_SHA1=%s\nVIRTUALHERE_VERIFICATION=%s\n' \
+  "$expected_sha1" "$verification_source" >>"$tmp/build-info.txt"
 
 printf '%s ALL=(root) NOPASSWD: /home/.vhp/bin/vhp-root start, /home/.vhp/bin/vhp-root stop, /home/.vhp/bin/vhp-root keepalive, /home/.vhp/bin/vhp-root check\n' "$user" >"$tmp/sudoers"
 visudo -cf "$tmp/sudoers"

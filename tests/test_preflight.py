@@ -79,7 +79,12 @@ class PreflightTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
             (folder / "vhusbdx86_64").write_bytes(b"test binary fixture")
-            env = dict(os.environ, tmp=str(folder))
+            env = dict(
+                os.environ,
+                tmp=str(folder),
+                expected_sha1="not-verified",
+                verification_source="manual-unverified",
+            )
             result = subprocess.run(
                 ["bash", "-c", block],
                 cwd=folder,
@@ -95,6 +100,8 @@ class PreflightTests(unittest.TestCase):
                 "VIRTUALHERE_SHA256=" + hashlib.sha256(b"test binary fixture").hexdigest(), info
             )
             self.assertIn("INSTALLED_UTC=", info)
+            self.assertIn("VIRTUALHERE_SHA1=not-verified\n", info)
+            self.assertIn("VIRTUALHERE_VERIFICATION=manual-unverified\n", info)
             self.assertNotIn(str(folder), info)
 
 
