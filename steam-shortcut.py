@@ -106,7 +106,11 @@ def update(data, install_dir):
         text("appname", "VirtualHerePad"),
         text("exe", '"/usr/bin/env"'),
         text("StartDir", f'"{path}"'),
-        text("LaunchOptions", f'-u LD_PRELOAD konsole --fullscreen -e "{path}/vhp.sh"'),
+        text(
+            "LaunchOptions",
+            f"-u LD_PRELOAD konsole --fullscreen --hide-menubar --hide-tabbar "
+            f'-p ScrollBarPosition=2 -e "{path}/vhp.sh"',
+        ),
         number("AllowOverlay", 1),
     ]
     if matches:

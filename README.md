@@ -81,15 +81,33 @@ If the server doesn't appear, see [Connection troubleshooting](#connection-troub
 
 ### Dashboard and controls
 
-The terminal dashboard shows a large battery percentage, charging/discharging
-status, **Server running**, and corner-exit markers. Server status does **not**
-mean that a remote client is connected. Small terminals get a compact layout;
-non-terminal launches use plain text.
+The colored terminal dashboard shows a block-letter **VirtualHerePad** title,
+large battery percentage (green, amber at 30%, red at 15%), charging status,
+local clock, primary local IP, connected client IPs, and corner-exit markers.
+Small terminals get a clipped compact layout; non-terminal launches use plain text.
 
-Battery data is sampled every **30 seconds** from the system battery. The display
-redraws only when values change or the window is resized—no animations or extra
-polling processes. Missing battery data shows as unavailable. Battery impact has
-not been measured.
+- The clock shows local hours/minutes, without seconds or animations.
+- Battery data is sampled every **30 seconds** from the system battery.
+- Network data is sampled every **5 seconds** using stock `ip` and `ss` tools.
+  The local IP is the source selected by a kernel route lookup (IPv4 preferred,
+  IPv6 fallback). Lookups do **not** send internet traffic. VPNs can affect the
+  selected route/IP.
+- **Server running** means the service is active. Client IPs are unique peer
+  addresses of established TCP connections to the default server port **7575**.
+  A connection does **not** prove the controller is in use. Multiple clients
+  behind the same address are grouped; custom server ports are not monitored.
+  Long lists are clipped to the terminal width. Network addresses are visible
+  on screen, so consider that when sharing screenshots.
+
+The display redraws only when shown values change or the window is resized.
+Sampling reuses the heartbeat loop, without persistent extra monitoring processes.
+Missing battery/network tools or data show as unavailable; no TCP peers shows
+**Waiting for client**. Battery impact has not been measured.
+
+The Steam shortcut launches Konsole fullscreen with its menu, tabs, and scrollbar
+hidden for that launch. It does not change your normal Konsole profile. Some
+Konsole versions may still show a toolbar; we do not pass unsupported toolbar
+flags or change global preferences.
 
 For corner-hold exit, keep one finger within the outer **12% of both screen axes**
 for two seconds. Releasing, moving out, or adding another finger cancels it.
@@ -296,7 +314,7 @@ Manual fields for the normal `deck` account:
 | Name | `VirtualHerePad` |
 | Target | `"/usr/bin/env"` |
 | Start In | `"/home/deck/.local/share/VirtualHerePad"` |
-| Launch Options | `-u LD_PRELOAD konsole --fullscreen -e "/home/deck/.local/share/VirtualHerePad/vhp.sh"` |
+| Launch Options | `-u LD_PRELOAD konsole --fullscreen --hide-menubar --hide-tabbar -p ScrollBarPosition=2 -e "/home/deck/.local/share/VirtualHerePad/vhp.sh"` |
 | Steam Overlay | On |
 | Force Steam Play compatibility tool | Off (native Linux launcher) |
 

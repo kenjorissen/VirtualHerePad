@@ -80,7 +80,8 @@ class ShortcutTests(unittest.TestCase):
         self.assertEqual(values[b"exe"], b'"/usr/bin/env"')
         self.assertEqual(
             values[b"LaunchOptions"],
-            b'-u LD_PRELOAD konsole --fullscreen -e "/home/deck/my vhp/vhp.sh"',
+            b"-u LD_PRELOAD konsole --fullscreen --hide-menubar --hide-tabbar "
+            b'-p ScrollBarPosition=2 -e "/home/deck/my vhp/vhp.sh"',
         )
         self.assertEqual(values[b"AllowOverlay"], struct.pack("<I", 1))
 

@@ -3,6 +3,7 @@ import os
 import pty
 import resource
 import select
+import shlex
 import signal
 import struct
 import subprocess
@@ -189,7 +190,7 @@ class BrightnessTests(unittest.TestCase):
 
 
 class DashboardTests(unittest.TestCase):
-    def run_dashboard(self, supplies, commands):
+    def run_dashboard(self, supplies, commands, route=None, sockets=None, route6=None):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
             for name, values in supplies.items():
@@ -199,7 +200,20 @@ class DashboardTests(unittest.TestCase):
                     (supply / key).write_text(value + "\n")
             env = dict(os.environ, POWER_SUPPLY_ROOT=str(folder))
             source = functions("vhp.sh", "DASHBOARD_FUNCTIONS")
-            init = "\nui_active=false; ui_dirty=true; last_display=''; rows=24; cols=80; sample_battery\n"
+
+            def stub(value):
+                return "return 1" if value is None else f"printf '%s\\n' {shlex.quote(value)}"
+
+            mocks = (
+                '\ntimeout() { shift; "$@"; }\n'
+                f"ip() {{ if [[ $2 == -4 ]]; then {stub(route)}; else {stub(route6)}; fi; }}\n"
+                f"ss() {{ {stub(sockets)}; }}\n"
+            )
+            init = mocks + (
+                "\nui_active=false; ui_dirty=true; last_display=''; rows=24; cols=80; "
+                "clock_time='12:34'; local_ip='Unavailable'; client_ips='Unavailable'; "
+                "client_count=0; client_status='Status unavailable'; sample_battery\n"
+            )
             result = subprocess.run(
                 ["bash", "-euc", source + init + commands],
                 env=env,
@@ -241,6 +255,65 @@ class DashboardTests(unittest.TestCase):
         text = self.run_dashboard(supplies, "ui_active=true; rows=10; cols=40; paint_dashboard")
         self.assertIn("Battery: 100% (Full)", text)
 
+    def test_network_clients_are_deduplicated_sorted_and_numeric(self):
+        text = self.run_dashboard(
+            {},
+            "sample_network; paint_dashboard",
+            route="1.1.1.1 via 192.168.1.1 dev wlan0 src 192.168.1.20 uid 1000",
+            sockets=(
+                "0 0 192.168.1.20:7575 192.168.1.9:40000\n"
+                "0 0 192.168.1.20:7575 192.168.1.8:40001\n"
+                "0 0 192.168.1.20:7575 192.168.1.9:40002\n"
+                "0 0 192.168.1.20:7575 evil\033[31m:40003"
+            ),
+        )
+        self.assertIn("Local IP: 192.168.1.20", text)
+        self.assertIn("TCP clients: 2", text)
+        self.assertIn("Clients: 192.168.1.8, 192.168.1.9", text)
+        self.assertNotIn("evil", text)
+
+    def test_ipv6_route_and_peer(self):
+        text = self.run_dashboard(
+            {},
+            "sample_network; paint_dashboard",
+            route6="2606:4700:4700::1111 dev wlan0 src 2001:db8::2",
+            sockets="0 0 [::]:7575 [2001:db8::1]:40000",
+        )
+        self.assertIn("Local IP: 2001:db8::2", text)
+        self.assertIn("Clients: 2001:db8::1", text)
+
+    def test_missing_tools_and_no_connections_are_distinct(self):
+        text = self.run_dashboard({}, "sample_network; paint_dashboard")
+        self.assertIn("Status unavailable", text)
+        self.assertIn("Local IP: Unavailable", text)
+        text = self.run_dashboard({}, "sample_network; paint_dashboard", sockets="")
+        self.assertIn("Waiting for client", text)
+        self.assertIn("Clients: None", text)
+
+    def test_clock_and_network_changes_redraw(self):
+        text = self.run_dashboard(
+            {},
+            "paint_dashboard; clock_time=12:35; paint_dashboard; "
+            "local_ip=192.168.1.20; paint_dashboard; "
+            "client_ips=192.168.1.8; client_count=1; "
+            "client_status='TCP clients: 1'; paint_dashboard; paint_dashboard",
+        )
+        self.assertEqual(text.count("Server running"), 4)
+        self.assertIn("12:35", text)
+        self.assertIn("Clients: 192.168.1.8", text)
+
+    def test_battery_color_thresholds(self):
+        for value, color in (("15", "31"), ("30", "33"), ("31", "32")):
+            text = self.run_dashboard(
+                {"BAT0": {"type": "Battery", "capacity": value}},
+                "ui_active=true; paint_dashboard",
+            )
+            self.assertIn(f"\033[1;{color}m", text)
+
+    def test_text_is_clipped_and_outside_rows_are_skipped(self):
+        text = self.run_dashboard({}, "rows=2; cols=10; text_at 1 8 ABCDEFG; text_at 3 1 HIDDEN")
+        self.assertEqual(text, "\033[1;8HABC")
+
     def test_ctrl_c_restores_terminal_and_stops_service(self):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
@@ -250,7 +323,11 @@ class DashboardTests(unittest.TestCase):
             sudo.write_text('#!/bin/bash\nshift\nexec "$@"\n')
             systemctl = folder / "systemctl"
             systemctl.write_text("#!/bin/bash\n[[ $1 == is-active ]]\n")
-            for command in (helper, sudo, systemctl):
+            ip = folder / "ip"
+            ss = folder / "ss"
+            for command in (ip, ss):
+                command.write_text("#!/bin/bash\nexit 1\n")
+            for command in (helper, sudo, systemctl, ip, ss):
                 command.chmod(0o755)
             launcher = folder / "launcher"
             launcher.write_text(
