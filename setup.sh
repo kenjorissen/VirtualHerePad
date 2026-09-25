@@ -12,7 +12,7 @@ fi
 user=$(id -un)
 [[ $user =~ ^[a-z_][a-z0-9_-]*\$?$ ]] || { echo 'Unsupported username.' >&2; exit 1; }
 echo '== Preflight checks =='
-for cmd in curl sudo systemctl systemd-inhibit visudo install sha256sum konsole; do
+for cmd in curl sudo systemctl systemd-inhibit visudo install sha256sum konsole python3; do
   command -v "$cmd" >/dev/null || { echo "Missing dependency: $cmd" >&2; exit 1; }
 done
 if [[ -n ${VHP_SHA256:-} && ! $VHP_SHA256 =~ ^[[:xdigit:]]{64}$ ]]; then
@@ -35,13 +35,9 @@ for target in /home/.vhp/bin /home/.vhp/data /etc/systemd/system /etc/sudoers.d;
   rm -f -- "$probe"
 done
 VHP_PREFLIGHT
-if command -v python3 >/dev/null; then
-  if ! python3 steam-shortcut.py --check; then
-    echo 'WARNING: Steam account setup needs attention; installation can continue without a shortcut.'
-    echo 'Log into Steam once, or use --account ID with steam-shortcut.py if prompted.'
-  fi
-else
-  echo 'WARNING: Python 3 is unavailable; automatic Steam shortcut creation will be skipped.'
+if ! python3 steam-shortcut.py --check; then
+  echo 'WARNING: Steam account setup needs attention; installation can continue without a shortcut.'
+  echo 'Log into Steam once, or use --account ID with steam-shortcut.py if prompted.'
 fi
 echo 'Preflight passed. No Steam processes were stopped.'
 echo 'Display note: Steam adaptive brightness may override VHP screen dimming.'
@@ -119,6 +115,7 @@ done
 VHP_DATA_SETUP
 sudo install -o root -g root -m 755 "$tmp/vhusbdx86_64" /home/.vhp/bin/vhusbdx86_64
 sudo install -o root -g root -m 755 vhp-root /home/.vhp/bin/vhp-root
+sudo install -o root -g root -m 644 touch-stop.py /home/.vhp/bin/touch-stop.py
 sudo install -o root -g root -m 644 "$tmp/build-info.txt" /home/.vhp/bin/build-info.txt
 sudo install -o root -g root -m 644 vhp.service /etc/systemd/system/vhp.service
 # Preserve any existing license/settings. Never automatically import checkout files.
@@ -139,11 +136,7 @@ echo 'Settings: /home/.vhp/data/config.ini (created by VirtualHere on first run)
 echo 'Logs: journalctl -u vhp.service'
 echo
 shortcut_status='skipped (not requested)'
-if ! command -v python3 >/dev/null; then
-  shortcut_status='skipped (Python 3 unavailable)'
-  echo 'Skipping Steam shortcut: python3 is unavailable.'
-  echo 'Add vhp.sh manually in Steam, or install Python 3 and run python3 steam-shortcut.py.'
-elif [[ -t 0 ]]; then
+if [[ -t 0 ]]; then
   echo 'If Steam is running, the shortcut helper will offer to shut it down gracefully.'
   if read -r -p 'Add/update the VHP Steam shortcut now? [y/N] ' answer; then
     case "$answer" in
@@ -177,5 +170,6 @@ echo 'Diagnostics: ./doctor.sh'
 echo 'Display: VHP dims once; it does not fight Steam adaptive brightness.'
 echo 'If the screen relights, check Steam > Settings > Display > Enable Adaptive Brightness.'
 echo 'That setting is yours to change; setup leaves it untouched.'
-echo 'Tip: keep the launcher open while sharing; use a local keyboard and Ctrl+C to stop.'
+echo 'Tip: keep the launcher open; hold one finger in any screen corner for 2 seconds to stop.'
+echo 'Fallback: use a local keyboard and Ctrl+C to stop.'
 echo 'The Deck Steam button may be forwarded to the VirtualHere client.'

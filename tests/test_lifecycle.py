@@ -17,7 +17,10 @@ class LifecycleTests(unittest.TestCase):
     def test_service_term_restores_brightness(self):
         self.exercise(kill_launcher=False)
 
-    def exercise(self, kill_launcher):
+    def test_touch_request_stops_service_and_restores_brightness(self):
+        self.exercise(kill_launcher=False, touch_exit=True)
+
+    def exercise(self, kill_launcher, touch_exit=False):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
             runtime = folder / 'runtime'
@@ -29,12 +32,15 @@ class LifecycleTests(unittest.TestCase):
             # Ignore TERM to verify bounded shutdown and escalation too.
             server.write_text('#!/usr/bin/env python3\nimport signal, time\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\nwhile True: time.sleep(1)\n')
             server.chmod(0o755)
+            monitor = folder / 'touch-stop.py'
+            monitor.write_text('import time\nwhile True: time.sleep(60)\n')
             helper = folder / 'helper'
             source = (ROOT / 'vhp-root').read_text()
             source = source.replace('[[ $EUID == 0 && $# == 1 ]]', '[[ $# == 1 ]]')
             source = source.replace('/run/vhp', str(runtime))
             source = source.replace('/sys/class/backlight/amdgpu_bl0/brightness', str(brightness))
             source = source.replace('/home/.vhp/bin/vhusbdx86_64', str(server))
+            source = source.replace('/home/.vhp/bin/touch-stop.py', str(monitor))
             source = source.replace('exec /usr/bin/systemctl "$1" vhp.service', 'exit 0')
             helper.write_text(source)
             helper.chmod(0o755)
@@ -69,12 +75,18 @@ class LifecycleTests(unittest.TestCase):
                     self.assertIsNone(client.poll())
                     client.kill()  # No EXIT trap can run.
                     client.wait(timeout=2)
+                elif touch_exit:
+                    (runtime / 'touch-stop').touch()
                 else:
                     service.send_signal(signal.SIGTERM)
                 output, _ = service.communicate(timeout=17)
                 self.assertEqual(service.returncode, 0, output)
                 if kill_launcher:
                     self.assertIn('heartbeat expired', output)
+                if touch_exit:
+                    self.assertIn('Touchscreen requested shutdown.', output)
+                self.assertIn('Saved backlight brightness=73', output)
+                self.assertIn('Restored backlight brightness=73', output)
                 self.assertEqual(brightness.read_text().strip(), '73')
                 self.assertEqual(brightness.stat().st_mode & 0o777, 0o640)
             finally:

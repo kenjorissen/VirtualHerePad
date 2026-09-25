@@ -33,21 +33,34 @@ esac
 BRIGHTNESS_FILE=/sys/class/backlight/amdgpu_bl0/brightness
 brightness=''
 child=''
+touch_monitor=''
 cleanup() {
   trap - EXIT INT TERM
   # Restore first, even if the USB server takes time to terminate.
   if [[ -n "$brightness" ]]; then
-    printf '%s\n' "$brightness" > "$BRIGHTNESS_FILE" || true
+    if printf '%s\n' "$brightness" > "$BRIGHTNESS_FILE"; then
+      echo "Restored backlight brightness=$brightness"
+    else
+      echo "WARNING: could not restore backlight brightness=$brightness" >&2
+    fi
   fi
-  if [[ -n "$child" ]]; then
-    kill -TERM "$child" 2>/dev/null || true
-    for _ in 1 2 3; do
-      kill -0 "$child" 2>/dev/null || break
-      sleep 1
+  local pid alive
+  local -a children=()
+  [[ -z "$child" ]] || children+=("$child")
+  [[ -z "$touch_monitor" ]] || children+=("$touch_monitor")
+  for pid in "${children[@]}"; do kill -TERM "$pid" 2>/dev/null || true; done
+  for _ in 1 2 3; do
+    alive=false
+    for pid in "${children[@]}"; do
+      if kill -0 "$pid" 2>/dev/null; then alive=true; fi
     done
-    kill -KILL "$child" 2>/dev/null || true
-    wait "$child" 2>/dev/null || true
-  fi
+    "$alive" || break
+    sleep 1
+  done
+  for pid in "${children[@]}"; do
+    kill -KILL "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  done
 }
 trap cleanup EXIT
 trap 'exit 0' INT TERM
@@ -56,12 +69,31 @@ trap 'exit 0' INT TERM
 heartbeat
 if [[ -r "$BRIGHTNESS_FILE" && -w "$BRIGHTNESS_FILE" ]]; then
   brightness=$(< "$BRIGHTNESS_FILE")
+  echo "Saved backlight brightness=$brightness from $BRIGHTNESS_FILE"
+  if [[ $brightness == 0 ]]; then
+    echo 'WARNING: backlight was already zero at startup; exit will restore zero.' >&2
+  fi
   printf '0\n' > "$BRIGHTNESS_FILE"
+else
+  echo "WARNING: backlight unavailable: $BRIGHTNESS_FILE" >&2
 fi
 
+# This root-only marker is checked in the existing heartbeat loop (no extra polling).
+rm -f /run/vhp/touch-stop
+/usr/bin/python3 -I /home/.vhp/bin/touch-stop.py &
+touch_monitor=$!
 /home/.vhp/bin/vhusbdx86_64 -c /home/.vhp/data/config.ini &
 child=$!
 while kill -0 "$child" 2>/dev/null; do
+  if [[ -f /run/vhp/touch-stop ]]; then
+    echo 'Touchscreen requested shutdown.'
+    exit 0
+  fi
+  if [[ -n "$touch_monitor" ]] && ! kill -0 "$touch_monitor" 2>/dev/null; then
+    wait "$touch_monitor" || true
+    touch_monitor=''
+    echo 'WARNING: touch exit monitor stopped; use local-keyboard Ctrl+C to exit.' >&2
+  fi
   read -r uptime _ < /proc/uptime
   last=$(< "$LEASE")
   if [[ ! $last =~ ^[0-9]+$ ]] || (( ${uptime%%.*} - last >= 10 )); then

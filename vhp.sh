@@ -18,10 +18,16 @@ trap cleanup EXIT
 trap 'exit 0' INT TERM
 
 sudo -n "$HELPER" start
-echo 'VHP is running. Leave this window open; use a local keyboard and Ctrl+C to stop.'
+echo 'VHP is running. Leave this window open.'
+echo 'To stop: hold one finger in any screen corner for 2 seconds, or use local-keyboard Ctrl+C.'
 echo 'The Deck Steam button may be forwarded to the VirtualHere client.'
 while /usr/bin/systemctl is-active --quiet vhp.service; do
-  sudo -n "$HELPER" keepalive
+  if ! sudo -n "$HELPER" keepalive; then
+    # A touch request may have stopped the service between these two calls.
+    if ! /usr/bin/systemctl is-active --quiet vhp.service; then break; fi
+    echo 'ERROR: could not refresh the VHP heartbeat.' >&2
+    exit 1
+  fi
   # Keep a foreground input loop for the Konsole/Steam input context.
   if [[ -t 0 ]]; then
     read -rsn1 -t 1 _ || true
@@ -29,5 +35,8 @@ while /usr/bin/systemctl is-active --quiet vhp.service; do
     sleep 1
   fi
 done
-echo 'VHP stopped. Inspect logs with: journalctl -u vhp.service' >&2
-exit 1
+if /usr/bin/systemctl is-failed --quiet vhp.service; then
+  echo 'VHP failed. Inspect logs with: journalctl -u vhp.service' >&2
+  exit 1
+fi
+echo 'VHP stopped.'

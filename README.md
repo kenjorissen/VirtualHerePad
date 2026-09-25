@@ -19,10 +19,11 @@ git pull
 The initial clone has no need for `git pull`. Setup asks for your sudo password
 and downloads the current x86-64 server directly from VirtualHere over HTTPS.
 Set a password with `passwd` first if your Deck doesn't have one.
-Dependencies: Bash, curl, sudo, systemd, Konsole, and standard GNU utilities.
+Dependencies: Bash, Python 3, curl, sudo, systemd, Konsole, and standard GNU
+utilities. No pip packages or additional graphical toolkits are needed.
 Before downloading, setup checks required tools, sudo access, writable install
-paths, and Steam account discovery. Missing/ambiguous Steam accounts or missing
-Python produce warnings rather than blocking installation without a shortcut.
+paths, and Steam account discovery. Missing/ambiguous Steam accounts produce
+warnings rather than blocking installation without a shortcut.
 Preflight does not shut down Steam. The final summary reports installation and
 shortcut status separately and tells you what to do next.
 
@@ -57,9 +58,8 @@ runs never shut Steam down automatically.
 
 You can also exit Steam yourself (**Steam > Exit**, not just closing its window).
 After a successful shortcut update, the helper offers to reopen Steam. It never
-launches Steam automatically in noninteractive runs. Python 3 is required only
-for shortcut creation; no pip packages are needed. If Python is missing, setup
-skips this step with a message.
+launches Steam automatically in noninteractive runs. Python 3 is used for
+shortcut creation and the local touchscreen exit monitor; setup checks for it.
 
 You can also create/update the shortcut separately, as your normal user:
 
@@ -85,10 +85,28 @@ The generated shortcut uses your checkout's actual path:
 - **Enable Steam Overlay:** on
 
 You can keep your existing shortcut or configure those fields manually instead.
-Keep the launcher open. A local Bluetooth keyboard can stop it with **Ctrl+C**.
-The Deck's Steam button may be forwarded to the VirtualHere client, so don't
-rely on it to open the local Steam menu. If you can access that menu locally,
-**Steam > Exit Game** also stops VHP.
+Keep the launcher open. To stop, **hold one finger in any screen corner for two
+seconds** (within the outer 12% of both touchscreen axes). Releasing, moving out
+of the corner, or adding another finger cancels the hold. After multiple fingers,
+lift all fingers before trying again. All four corners work regardless of panel
+rotation. The helper handles the request within its existing one-second loop.
+
+The root-owned Python monitor detects direct type-B multitouch devices by
+capabilities, not an event number or device name. It reads input non-exclusively
+(no input grab), logs no coordinates, and requires the touchscreen to remain
+local rather than forwarded through VirtualHere. Other local apps can still
+receive the touches. A finger already down when monitoring starts must lift
+before arming. Touch exit is unverified on hardware; use the fallback if needed.
+
+The monitor blocks on input while idle—no periodic polling of a connected idle
+touchscreen. Only a potential hold schedules a timer. If the device is absent,
+it retries discovery every ten seconds. This adds no graphical UI and should
+have small overhead, but battery impact has not been measured.
+
+A local Bluetooth keyboard can also stop it with **Ctrl+C**, including if touch
+monitoring fails. The Deck's Steam button may be forwarded to the VirtualHere
+client, so don't rely on it to open the local Steam menu. If you can access that
+menu locally, **Steam > Exit Game** also stops VHP.
 
 Only one service instance is supported. Don't open multiple launchers: closing
 one stops the shared service. The launcher sends a heartbeat every second.
@@ -151,6 +169,9 @@ enabled. If relighting becomes a problem, check **Steam > Settings > Display >
 Enable Adaptive Brightness** and optionally disable it while sharing.
 The backlight
 path is currently `amdgpu_bl0`; on hardware without it, dimming is skipped.
+Saved and restored brightness values are logged in the service journal. If the
+saved value is already zero, VHP warns and restores zero rather than guessing a
+new level. This logging helps diagnose a screen that stays dark after exit.
 A crash/power loss or forced kill of the privileged service itself may prevent
 brightness restoration; killing only the launcher is handled by the heartbeat. Sleep
 inhibitors don't prevent privileged forced suspension.

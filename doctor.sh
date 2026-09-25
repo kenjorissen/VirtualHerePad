@@ -12,12 +12,12 @@ for cmd in sudo systemctl systemd-inhibit curl konsole python3; do
   if command -v "$cmd" >/dev/null; then
     echo "OK: $cmd"
   else
-    warn "Missing $cmd (python3 is needed only for Steam shortcut creation)"
+    warn "Missing $cmd (python3 is needed for touchscreen exit and Steam shortcut creation)"
   fi
 done
 
 section 'Installed files and ownership'
-for path in /home/.vhp /home/.vhp/bin /home/.vhp/bin/vhp-root /home/.vhp/bin/vhusbdx86_64 /etc/systemd/system/vhp.service /home/.vhp/data; do
+for path in /home/.vhp /home/.vhp/bin /home/.vhp/bin/vhp-root /home/.vhp/bin/vhusbdx86_64 /home/.vhp/bin/touch-stop.py /etc/systemd/system/vhp.service /home/.vhp/data; do
   if [[ -e $path ]]; then
     stat -c '%U:%G %a %n' "$path"
     [[ ! -L $path ]] || warn "Unexpected symlink: $path"
