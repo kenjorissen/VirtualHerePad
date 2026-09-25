@@ -1,0 +1,252 @@
+#!/usr/bin/env python3
+"""Touch UI for VHP: big on-screen keyboard plus a status strip.
+
+Runs as the normal user. All privileged work happens in the root backend over a
+Unix socket; this process can only send an operation name, an HID key code, and
+a boolean.
+"""
+
+import argparse
+import os
+import socket
+import sys
+from pathlib import Path
+
+from PySide6.QtCore import Property, QObject, QSocketNotifier, QTimer, QUrl, Signal, Slot
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtQml import QQmlApplicationEngine
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import vhp_ipc  # noqa: E402
+import vhp_keyboard  # noqa: E402
+
+RETRY_MS = 2000
+
+
+class Bridge(QObject):
+    """Socket client plus the touch-key state machine, exposed to QML."""
+
+    changed = Signal()
+
+    def __init__(self, socket_path, parent=None):
+        super().__init__(parent)
+        self.socket_path = Path(socket_path)
+        self.socket = None
+        self.notifier = None
+        self.reader = vhp_ipc.Reader()
+        self.keys = vhp_keyboard.TouchKeys()
+        self.layout = "us"
+        self._connected = False
+        self._shared = False
+        self._stopping = False
+        self._percent = 0
+        self._finished = False
+        self.retry = QTimer(self)
+        self.retry.setInterval(RETRY_MS)
+        self.retry.timeout.connect(self.connect)
+        self.retry.start()
+        self.connect()
+
+    # -- connection --------------------------------------------------------
+    @Slot()
+    def connect(self):
+        if self._connected or self._finished:
+            return
+        try:
+            connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            connection.setblocking(False)
+            connection.connect(str(self.socket_path))
+        except OSError:
+            connection.close()
+            return
+        self.socket = connection
+        self._connected = True
+        self.reader = vhp_ipc.Reader()
+        self.notifier = QSocketNotifier(connection.fileno(), QSocketNotifier.Type.Read, self)
+        self.notifier.activated.connect(self.read)
+        self.send({"op": "status"})
+        self.changed.emit()
+
+    def drop(self):
+        if self.notifier is not None:
+            self.notifier.setEnabled(False)
+            self.notifier.deleteLater()
+            self.notifier = None
+        if self.socket is not None:
+            try:
+                self.socket.close()
+            except OSError:
+                pass
+            self.socket = None
+        self._connected = False
+        self._shared = False
+        # Never leave a modifier stuck on the PC after a dropped connection.
+        self.keys = vhp_keyboard.TouchKeys()
+        self.changed.emit()
+
+    @Slot()
+    def read(self):
+        try:
+            data = self.socket.recv(4096)
+        except OSError:
+            self.drop()
+            return
+        if not data:
+            self.drop()
+            return
+        try:
+            lines = self.reader.feed(data)
+            for line in lines:
+                self.handle(vhp_ipc.decode_response(line))
+        except vhp_ipc.ProtocolError:
+            self.drop()
+
+    def handle(self, message):
+        op = message["op"]
+        if op == "status":
+            self._shared = message["shared"]
+            self._stopping = message["stopping"]
+            self._percent = message["percent"]
+            if message["layout"] != self.layout:
+                self.layout = message["layout"]
+            self.changed.emit()
+        elif op == "pong":
+            pass
+
+    def send(self, message):
+        if self.socket is None:
+            return
+        try:
+            self.socket.sendall(vhp_ipc.encode(message))
+        except OSError:
+            self.drop()
+
+    def send_keys(self, events):
+        for code, down in events:
+            self.send({"op": "key", "code": code, "down": down})
+
+    # -- operations --------------------------------------------------------
+    @Slot(int)
+    def press(self, code):
+        self.send_keys(self.keys.press(code))
+        self.changed.emit()
+
+    @Slot(int)
+    def release(self, code):
+        self.send_keys(self.keys.release(code))
+        self.changed.emit()
+
+    @Slot(str)
+    def setLayout(self, layout):
+        if layout in vhp_ipc.LAYOUTS:
+            self.layout = layout
+            self.send({"op": "layout", "layout": layout})
+            self.changed.emit()
+
+    @Slot()
+    def clear(self):
+        self.keys = vhp_keyboard.TouchKeys()
+        self.send({"op": "clear"})
+        self.changed.emit()
+
+    @Slot()
+    def stop(self):
+        self.send({"op": "stop"})
+        self._finished = True
+        self.retry.stop()
+        self.changed.emit()
+
+    # -- properties --------------------------------------------------------
+    @Property(bool, notify=changed)
+    def connected(self):
+        return self._connected
+
+    @Property(bool, notify=changed)
+    def shared(self):
+        return self._shared
+
+    @Property(bool, notify=changed)
+    def stopping(self):
+        return self._stopping
+
+    @Property(int, notify=changed)
+    def percent(self):
+        return self._percent
+
+    @Property(bool, notify=changed)
+    def shiftActive(self):
+        return self.keys.shift_active
+
+    @Property(bool, notify=changed)
+    def altgrActive(self):
+        return self.keys.altgr_active
+
+    @Property(bool, notify=changed)
+    def capsActive(self):
+        return self.keys.caps
+
+    @Property("QVariantList", notify=changed)
+    def layoutNames(self):
+        return [{"id": name, "label": vhp_keyboard.LAYOUT_NAMES[name]} for name in vhp_ipc.LAYOUTS]
+
+    @Property(str, notify=changed)
+    def layoutName(self):
+        return vhp_keyboard.LAYOUT_NAMES[self.layout]
+
+    @Property("QVariantList", notify=changed)
+    def rows(self):
+        return [
+            [self.keys.decorated(key) for key in row]
+            for row in vhp_keyboard.layout_grid(self.layout)
+        ]
+
+    @Property(int, constant=True)
+    def columns(self):
+        return 1000
+
+
+def parse_arguments(argv):
+    parser = argparse.ArgumentParser(description="VHP touch UI")
+    parser.add_argument("--socket", type=Path, default=Path("/run/vhp/gui.sock"))
+    parser.add_argument("--qml", type=Path, default=Path(__file__).with_suffix(".qml"))
+    parser.add_argument(
+        "--self-test",
+        type=float,
+        metavar="SECONDS",
+        help="load the UI, then exit successfully (offscreen checks)",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    options = parse_arguments(sys.argv[1:] if argv is None else argv)
+    application = QGuiApplication(sys.argv[:1])
+    application.setApplicationName("VirtualHerePad")
+    # Exposed as a root-object property rather than a context property: Qt clears
+    # context properties before destroying the object tree, so every binding would
+    # re-evaluate against a null during shutdown. Initial properties avoid that.
+    bridge = Bridge(options.socket)
+    engine = QQmlApplicationEngine()
+    engine.setInitialProperties({"vhp": bridge})
+    engine.load(QUrl.fromLocalFile(str(options.qml)))
+    if not engine.rootObjects():
+        print("UI failed to load.", file=sys.stderr)
+        return 1
+    if options.self_test is not None:
+        QTimer.singleShot(int(options.self_test * 1000), application.quit)
+    if os.environ.get("VHP_UI_SMOKE"):
+        # Report a summary then quit; used by the automated offscreen check.
+        QTimer.singleShot(
+            0,
+            lambda: print(
+                f"loaded rows={len(bridge.rows)} columns={bridge.columns} "
+                f"layout={bridge.layout} connected={bridge.connected}",
+                flush=True,
+            ),
+        )
+    return application.exec()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
