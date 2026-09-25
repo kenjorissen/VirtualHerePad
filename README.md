@@ -45,9 +45,16 @@ the VirtualHere server for you.
    keyboard and **Ctrl+C** are the fallback; the Deck's Steam button may be
    forwarded to the client rather than opening the local menu.
 
-`vhp.sh` is the launcher used by the Steam shortcut. You do **not** need to run it
-separately during installation. For testing, run `./vhp.sh` from your checkout in
-Konsole to see its output; it starts the same service and dims the screen.
+Setup installs the launcher and user tools into **`~/.local/share/VirtualHerePad`**.
+Steam runs the installed `vhp.sh`, not the checkout. You do **not** need to run it
+separately during installation. For a manual test in Konsole:
+
+```bash
+~/.local/share/VirtualHerePad/vhp.sh
+```
+
+This starts the same service and dims the screen. Once setup has updated the
+shortcut, the checkout can be moved or deleted without affecting normal use.
 
 ## Update
 
@@ -59,9 +66,12 @@ git pull
 ./setup.sh
 ```
 
-Setup stops the current instance, replaces installed code, and preserves settings
-and license data. It does not start VHP or enable it at boot. Normal SteamOS
-updates should preserve `/home`; if an update resets the service or sudo rule in
+Setup stops the current instance, replaces installed code and user tools, and
+preserves settings and license data. If you deleted the checkout, clone the
+repository again and run its `setup.sh`. When upgrading from an older version,
+accept shortcut creation so the existing entry is redirected from the checkout
+to the installed launcher; its app ID and other settings are preserved.
+Setup does not start VHP or enable it at boot. Normal SteamOS updates should preserve `/home`; if an update resets the service or sudo rule in
 `/etc`, rerun setup to restore integration.
 
 ## Config and license
@@ -148,15 +158,18 @@ writes shortcuts while Steam is running. Declining shutdown or a shutdown
 failure leaves shortcuts unchanged. Noninteractive setup skips shortcut prompts
 and never closes or opens Steam automatically.
 
-To manage the shortcut separately, run from the checkout:
+The installed shortcut helper works without a checkout:
 
 ```bash
-python3 steam-shortcut.py
+python3 ~/.local/share/VirtualHerePad/steam-shortcut.py
 # Check account discovery without editing files or stopping Steam:
-python3 steam-shortcut.py --check
+python3 ~/.local/share/VirtualHerePad/steam-shortcut.py --check
 # If multiple accounts exist, use the userdata ID listed by the helper:
-python3 steam-shortcut.py --account 12345678
+python3 ~/.local/share/VirtualHerePad/steam-shortcut.py --account 12345678
 ```
+
+Running the helper from a checkout also targets the installed launcher. Run
+setup first; shortcut creation refuses a missing/non-executable launcher.
 
 The helper backs up `shortcuts.vdf`, preserves other shortcuts, and updates an
 existing VirtualHerePad/VHP/vhp.sh entry instead of duplicating it. Old VHP names
@@ -164,26 +177,27 @@ are renamed while app IDs and other settings are retained. Unsupported file
 formats are left unchanged. It does not fabricate play history to promote the
 shortcut into Steam's Home / Recently Played view.
 
-Manual shortcut fields for a default clone:
+Manual shortcut fields for the normal `deck` account:
 
 | Field | Value |
 | --- | --- |
 | Name | `VirtualHerePad` |
 | Target | `"/usr/bin/env"` |
-| Start In | `"/home/deck/VirtualHerePad"` |
-| Launch Options | `-u LD_PRELOAD konsole --fullscreen -e "/home/deck/VirtualHerePad/vhp.sh"` |
+| Start In | `"/home/deck/.local/share/VirtualHerePad"` |
+| Launch Options | `-u LD_PRELOAD konsole --fullscreen -e "/home/deck/.local/share/VirtualHerePad/vhp.sh"` |
 | Steam Overlay | On |
 | Force Steam Play compatibility tool | Off (native Linux launcher) |
 
-The scripts resolve the checkout's actual path; no username or directory name
-is assumed, and spaces are supported. Existing `~/vhp` clones still work. After
-moving a checkout, rerun `python3 /new/path/steam-shortcut.py` or setup to update
-its shortcut. Privileged installation paths are independent of the checkout.
+Setup resolves its own source directory and the invoking user's home; no checkout
+name or username is assumed, and spaces are supported. User tools always install
+under that home's `.local/share/VirtualHerePad` (not `$XDG_DATA_HOME`), so launching
+from Steam or Konsole uses the same location. Existing `~/vhp` clones still work.
+Moving or deleting the checkout no longer requires changing an installed shortcut.
 
 ## Diagnostics
 
 ```bash
-./doctor.sh
+~/.local/share/VirtualHerePad/doctor.sh
 systemctl status vhp.service
 journalctl -u vhp.service -n 100 --no-pager
 ```
@@ -209,8 +223,10 @@ VHP_SHA256=<trusted-sha256> ./setup.sh
 Without a pinned hash, HTTPS and the upstream host are trusted rather than an
 independently verified release checksum. The proprietary binary is not in Git.
 
-Root-owned code lives in `/home/.vhp/bin`, settings in `/home/.vhp/data`, and only
-the service and sudo rule go in `/etc` (normally writable through SteamOS's
+The launcher, shortcut helper, diagnostics, and uninstaller are user-owned under
+`~/.local/share/VirtualHerePad`. Only these unprivileged tools live in the user's
+writable home. Root-owned code stays in `/home/.vhp/bin`, settings in
+`/home/.vhp/data`, and only the service and sudo rule go in `/etc` (normally writable through SteamOS's
 overlay). Setup/uninstall do not write to `/usr` or require disabling SteamOS's
 read-only protection. This layout has been tested on a Steam Deck.
 
@@ -228,11 +244,14 @@ firewall or server authentication.
 
 ## Remove
 
+Run as your normal user (not with `sudo`), from any directory:
+
 ```bash
-./uninstall.sh
+~/.local/share/VirtualHerePad/uninstall.sh
 ```
 
-This stops the service and removes installed code and the sudo rule. Settings
+The checkout's `./uninstall.sh` works too. This stops the service and removes
+privileged code, the sudo rule, and the four installed user tools. Settings
 remain at `/home/.vhp/data/config.ini` for reinstalling; nothing is moved to
 `/home/deck`. Remove the non-Steam shortcut manually in Steam. The checkout and
 old local files are left untouched.
@@ -240,7 +259,7 @@ old local files are left untouched.
 **Only if you want to permanently delete settings/license without a backup:**
 
 ```bash
-./uninstall.sh --purge-settings
+~/.local/share/VirtualHerePad/uninstall.sh --purge-settings
 ```
 
 This additionally deletes `/home/.vhp` and any previous `/var/lib/vhp` data.

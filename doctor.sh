@@ -40,6 +40,17 @@ for path in /home/.vhp/bin/vhp-root /home/.vhp/bin/vhusbdx86_64; do
   [[ -x $path ]] || warn "Not executable: $path"
 done
 
+section 'Installed user tools (independent of the checkout)'
+user_root="${HOME:?HOME must be set}/.local/share/VirtualHerePad"
+for name in vhp.sh doctor.sh uninstall.sh steam-shortcut.py; do
+  if [[ -r "$user_root/$name" ]]; then
+    echo "OK: $user_root/$name"
+  else
+    warn "Missing user tool: $user_root/$name; rerun setup.sh"
+  fi
+done
+[[ -x "$user_root/vhp.sh" ]] || warn 'Installed user launcher is not executable'
+
 section 'Installed version (not the current checkout)'
 if [[ -r /home/.vhp/bin/build-info.txt ]]; then
   head -n 3 /home/.vhp/bin/build-info.txt

@@ -22,6 +22,15 @@ def fields(entry):
     return {key: value for _, key, value in entry[2]}
 
 
+def install_launcher(home):
+    install_dir = home / ".local/share/VirtualHerePad"
+    install_dir.mkdir(parents=True)
+    launcher = install_dir / "vhp.sh"
+    launcher.write_text("#!/bin/bash\nexit 0\n")
+    launcher.chmod(0o755)
+    return install_dir
+
+
 class ShortcutTests(unittest.TestCase):
     def setUp(self):
         # Exercise a terminal-like environment even in CI. Missing prompt/process
@@ -140,7 +149,7 @@ class ShortcutTests(unittest.TestCase):
                 self.assertEqual(values[b"icon"], b"/art.png")
                 self.assertEqual(shortcut.update(result, Path("/home/deck/VirtualHerePad")), result)
 
-    def test_shortcut_uses_script_location_not_working_directory(self):
+    def test_shortcut_uses_installed_launcher_after_checkout_is_removed(self):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
             account = home / ".local/share/Steam/userdata/123"
@@ -148,6 +157,8 @@ class ShortcutTests(unittest.TestCase):
             checkout = home / "custom folder/VirtualHerePad"
             checkout.mkdir(parents=True)
             script = checkout / "steam-shortcut.py"
+            installed = install_launcher(home)
+            checkout.rmdir()  # The original script location no longer exists.
             with (
                 patch.object(shortcut, "__file__", str(script)),
                 patch.object(shortcut.Path, "home", return_value=home),
@@ -158,8 +169,25 @@ class ShortcutTests(unittest.TestCase):
             ):
                 shortcut.main()
             values = fields(entries((account / "config/shortcuts.vdf").read_bytes())[0])
-            self.assertEqual(values[b"StartDir"], f'"{checkout}"'.encode())
-            self.assertIn(f'"{checkout}/vhp.sh"'.encode(), values[b"LaunchOptions"])
+            self.assertEqual(values[b"StartDir"], f'"{installed}"'.encode())
+            self.assertIn(f'"{installed}/vhp.sh"'.encode(), values[b"LaunchOptions"])
+            self.assertNotIn(str(checkout).encode(), values[b"LaunchOptions"])
+
+    def test_missing_installed_launcher_does_not_close_steam(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            (home / ".local/share/Steam/userdata/123").mkdir(parents=True)
+            with (
+                patch.object(shortcut.Path, "home", return_value=home),
+                patch.object(shortcut.os, "geteuid", return_value=1000),
+                patch("sys.argv", ["steam-shortcut.py"]),
+                patch.object(shortcut, "ensure_steam_closed") as close,
+                patch.object(shortcut, "save") as save,
+            ):
+                with self.assertRaises(SystemExit):
+                    shortcut.main()
+                close.assert_not_called()
+                save.assert_not_called()
 
     def test_rejects_duplicates(self):
         data = shortcut.encode(
@@ -204,6 +232,7 @@ class ShortcutTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
             (home / ".local/share/Steam/userdata/123").mkdir(parents=True)
+            install_launcher(home)
             with (
                 patch.object(shortcut.Path, "home", return_value=home),
                 patch("sys.argv", ["steam-shortcut.py"]),
@@ -331,6 +360,7 @@ class ShortcutTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
             userdata = home / ".local/share/Steam/userdata"
+            install_launcher(home)
             for account in ("123", "456"):
                 (userdata / account / "config").mkdir(parents=True)
             with (

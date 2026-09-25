@@ -77,7 +77,7 @@ def number(key, value):
     return (2, key.encode(), struct.pack("<I", value))
 
 
-def update(data, checkout):
+def update(data, install_dir):
     root = decode(data) if data else [(0, b"shortcuts", [])]
     containers = [v for t, k, v in root if t == 0 and k == b"shortcuts"]
     if len(containers) != 1:
@@ -99,9 +99,9 @@ def update(data, checkout):
         raise ValueError(
             "Multiple VirtualHerePad/VHP shortcuts found; remove duplicates in Steam first"
         )
-    path = str(checkout)
+    path = str(install_dir)
     if any(c in path for c in '\n\r\0"\\`$'):
-        raise ValueError("Checkout path contains unsupported launch-option characters")
+        raise ValueError("Installation path contains unsupported launch-option characters")
     desired = [
         text("appname", "VirtualHerePad"),
         text("exe", '"/usr/bin/env"'),
@@ -275,12 +275,18 @@ def main():
     if args.check:
         print(f"Steam account ready: {account}; shortcuts: {path}")
         return
+    install_dir = Path.home() / ".local/share/VirtualHerePad"
+    launcher = install_dir / "vhp.sh"
+    if not launcher.is_file() or not os.access(launcher, os.X_OK):
+        parser.error(
+            f"Installed launcher missing or not executable: {launcher}; run setup.sh first"
+        )
     try:
         ensure_steam_closed()
     except ValueError as exc:
         parser.error(str(exc))
     original = path.read_bytes() if path.exists() else b""
-    changed = update(original, Path(__file__).resolve().parent)
+    changed = update(original, install_dir)
     if changed == original:
         print(
             "VirtualHerePad shortcut is already up to date. In Gaming Mode: Library > Non-Steam > VirtualHerePad."

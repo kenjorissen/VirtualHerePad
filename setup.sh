@@ -12,6 +12,7 @@ fi
   echo 'An x86-64 Steam Deck is required.' >&2
   exit 1
 }
+USER_ROOT="${HOME:?HOME must be set}/.local/share/VirtualHerePad"
 user=$(id -un)
 [[ $user =~ ^[a-z_][a-z0-9_-]*\$?$ ]] || {
   echo 'Unsupported username.' >&2
@@ -32,6 +33,11 @@ fi
   echo 'A running systemd system is required.' >&2
   exit 1
 }
+# Check the user-side install location without using sudo.
+user_parent=$USER_ROOT
+while [[ ! -d "$user_parent" ]]; do user_parent=$(dirname "$user_parent"); done
+user_probe=$(mktemp "$user_parent/.vhp-write-check.XXXXXX")
+rm -f -- "$user_probe"
 echo 'Checking sudo access (set a password with passwd first if needed)...'
 sudo -v
 # Probe the nearest existing install directories without creating installation data.
@@ -146,7 +152,15 @@ if ! sudo -k -n /home/.vhp/bin/vhp-root check; then
   exit 1
 fi
 
+# BEGIN USER_INSTALL
+# No runtime tool should depend on this checkout remaining in place.
+install -d -m 755 "$USER_ROOT"
+install -m 755 vhp.sh doctor.sh uninstall.sh "$USER_ROOT/"
+install -m 644 steam-shortcut.py "$USER_ROOT/steam-shortcut.py"
+# END USER_INSTALL
+
 echo 'VirtualHerePad components installed successfully.'
+echo "User tools: $USER_ROOT"
 echo 'Settings: /home/.vhp/data/config.ini (created by VirtualHere on first run).'
 echo 'Logs: journalctl -u vhp.service'
 echo
@@ -156,20 +170,20 @@ if [[ -t 0 ]]; then
   if read -r -p 'Add/update the VirtualHerePad Steam shortcut now? [y/N] ' answer; then
     case "$answer" in
       y | Y | yes | YES)
-        if python3 steam-shortcut.py; then
+        if python3 "$USER_ROOT/steam-shortcut.py"; then
           shortcut_status='ready (added, updated, or already current)'
         else
           shortcut_status='not updated (see error above)'
           echo 'VirtualHerePad installation succeeded, but the Steam shortcut was not updated.'
-          echo 'Follow the message above, then rerun: python3 steam-shortcut.py'
+          printf 'Follow the message above, then rerun: python3 "%s/steam-shortcut.py"\n' "$USER_ROOT"
         fi
         ;;
-      *) echo 'Skipped. You can add it later with: python3 steam-shortcut.py' ;;
+      *) printf 'Skipped. Add it later with: python3 "%s/steam-shortcut.py"\n' "$USER_ROOT" ;;
     esac
   fi
 else
   shortcut_status='skipped (noninteractive setup)'
-  echo 'Noninteractive setup: shortcut skipped. Run python3 steam-shortcut.py to add it.'
+  printf 'Noninteractive setup: shortcut skipped. Run python3 "%s/steam-shortcut.py" to add it.\n' "$USER_ROOT"
 fi
 
 printf '\n== Setup complete ==\n'
@@ -183,9 +197,15 @@ case "$shortcut_status" in
     echo 'A new shortcut may not appear on Home / Recently Played until first launch.'
     echo 'Then connect from the other machine using the VirtualHere client.'
     ;;
-  *) echo 'Next: run python3 steam-shortcut.py (or add the shortcut manually), then find it under Library > Non-Steam.' ;;
+  *) printf 'Next: run python3 "%s/steam-shortcut.py", then find VirtualHerePad under Library > Non-Steam.\n' "$USER_ROOT" ;;
 esac
-echo 'Diagnostics: ./doctor.sh (or run ./vhp.sh manually in Konsole to test the launcher).'
+printf 'Diagnostics: "%s/doctor.sh"\n' "$USER_ROOT"
+printf 'Manual launcher test: "%s/vhp.sh"\n' "$USER_ROOT"
+if [[ $shortcut_status == ready* ]]; then
+  echo 'The shortcut uses installed files; the checkout can be moved or deleted.'
+else
+  echo 'Before deleting the checkout, update any old Steam shortcut to use the installed launcher.'
+fi
 echo 'Display: VHP dims once; it does not fight Steam adaptive brightness.'
 echo 'If the screen relights, check Steam > Settings > Display > Enable Adaptive Brightness.'
 echo 'That setting is yours to change; setup leaves it untouched.'

@@ -12,6 +12,10 @@ class UninstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
             log = folder / "commands"
+            user_tools = folder / "home/.local/share/VirtualHerePad"
+            user_tools.mkdir(parents=True)
+            for name in ("vhp.sh", "doctor.sh", "uninstall.sh", "steam-shortcut.py", "keep.txt"):
+                (user_tools / name).write_text("fixture")
             sudo = folder / "sudo"
             sudo.write_text(
                 '#!/bin/bash\nprintf "%s\\n" "$*" >> "$COMMAND_LOG"\n'
@@ -30,12 +34,14 @@ class UninstallTests(unittest.TestCase):
             env = dict(
                 os.environ,
                 PATH=f"{folder}:" + os.environ["PATH"],
+                HOME=str(folder / "home"),
                 COMMAND_LOG=str(log),
                 FAIL_STOP="1" if stop_failure else "0",
             )
             result = subprocess.run(
                 ["bash", str(script), *args], env=env, capture_output=True, text=True, timeout=3
             )
+            self.remaining_user_files = {path.name for path in user_tools.iterdir()}
             return result, log.read_text() if log.exists() else ""
 
     def test_preserves_settings_by_default(self):
@@ -50,6 +56,11 @@ class UninstallTests(unittest.TestCase):
         self.assertIn("/etc/sudoers.d/vhp", commands)
         self.assertIn("/etc/sudoers.d/zz-vhp", commands)
 
+    def test_removes_only_known_user_tools(self):
+        result, _ = self.run_uninstall()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.remaining_user_files, {"keep.txt"})
+
     def test_purge_is_explicit(self):
         result, commands = self.run_uninstall(["--purge-settings"])
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -59,6 +70,7 @@ class UninstallTests(unittest.TestCase):
         result, commands = self.run_uninstall(stop_failure=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("rm ", commands)
+        self.assertIn("vhp.sh", self.remaining_user_files)
 
     def test_unknown_option_changes_nothing(self):
         result, commands = self.run_uninstall(["--purge"])

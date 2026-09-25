@@ -14,6 +14,11 @@ case "${1:-}" in
     ;;
 esac
 
+if [[ $EUID == 0 ]]; then
+  echo 'Run uninstall.sh as your normal user, not with sudo.' >&2
+  exit 1
+fi
+USER_ROOT="${HOME:?HOME must be set}/.local/share/VirtualHerePad"
 echo 'Removing the VHP service, installed code, and sudo rule.'
 if "$purge"; then
   echo 'WARNING: --purge-settings permanently deletes /home/.vhp and /var/lib/vhp, including licenses/settings.'
@@ -31,5 +36,9 @@ if "$purge"; then
 else
   echo 'Preserved settings/license in /home/.vhp/data (and any previous config copies).'
 fi
-echo 'Uninstalled. Remove the VHP non-Steam shortcut manually in Steam.'
+# Remove only our known user tools, not other files someone may have put here.
+rm -f -- "$USER_ROOT/vhp.sh" "$USER_ROOT/doctor.sh" \
+  "$USER_ROOT/steam-shortcut.py" "$USER_ROOT/uninstall.sh"
+if [[ -d "$USER_ROOT" ]]; then rmdir -- "$USER_ROOT" 2>/dev/null || true; fi
+echo 'Uninstalled. Remove the VirtualHerePad non-Steam shortcut manually in Steam.'
 echo 'The checkout and any old virtualhere/ files were left untouched.'
