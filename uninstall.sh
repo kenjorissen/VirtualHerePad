@@ -4,8 +4,14 @@ export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 purge=false
 case "${1:-}" in
   '') [[ $# == 0 ]] || exit 1 ;;
-  --purge-settings) [[ $# == 1 ]] || exit 1; purge=true ;;
-  *) echo 'Usage: ./uninstall.sh [--purge-settings]' >&2; exit 1 ;;
+  --purge-settings)
+    [[ $# == 1 ]] || exit 1
+    purge=true
+    ;;
+  *)
+    echo 'Usage: ./uninstall.sh [--purge-settings]' >&2
+    exit 1
+    ;;
 esac
 
 echo 'Removing the VHP service, installed code, and sudo rule.'

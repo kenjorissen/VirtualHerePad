@@ -2,47 +2,48 @@
 
 Use a Steam Deck as a controller for another machine through the proprietary
 [VirtualHere USB server](https://www.virtualhere.com/usb_server_software).
-VirtualHerePad (VHP) launches the server, turns down the Deck's backlight, and inhibits normal
-system sleep until you exit. Install the VirtualHere client on the other machine
-and select the Deck's controller there. VirtualHere's own licensing terms apply.
+VirtualHerePad (VHP) starts the server, dims the Deck's screen, and prevents normal
+sleep while sharing. Hold a screen corner to stop and restore brightness.
+VirtualHere's own licensing terms apply.
 
-## Install
+## Quick start
 
-On the Deck, log into Steam once, switch to **Desktop Mode**, and open Konsole.
-Run as your normal user (not root). If you haven't set a sudo password yet, run
-`passwd` first.
+All prerequisites are included on a stock Steam Deck. **No extra pacman or pip
+packages, graphical toolkits, or virtual environment are needed.** Setup downloads
+the VirtualHere server for you.
 
-```bash
-cd ~
-git clone https://github.com/kenjorissen/VirtualHerePad.git
-cd VirtualHerePad
-./setup.sh
-```
+1. **Prepare the Deck.** Log into Steam once, switch to **Desktop Mode**, and open
+   **Konsole**. Run as your normal user, not root. If you haven't set a sudo
+   password yet, run `passwd`.
+2. **Clone and install:**
 
-Accept the offer to add the **VirtualHerePad** Steam shortcut. After setup,
-launch **VirtualHerePad** from Steam's Library (the **Non-Steam** tab in Gaming
-Mode). You do not need to run `vhp.sh` yourself for normal use.
+   ```bash
+   cd ~
+   git clone https://github.com/kenjorissen/VirtualHerePad.git
+   cd VirtualHerePad
+   ./setup.sh
+   ```
 
-Setup asks for your sudo password and downloads the current x86-64 VirtualHere
-server directly from its publisher over HTTPS. All prerequisites—Git, Bash,
-Python 3, curl, sudo, systemd, Konsole, and the standard GNU utilities—are already
-included on a stock Steam Deck. **No extra package installation, pacman, pip,
-or virtual environment is necessary.**
+3. **Add the shortcut.** Accept setup's offer to add **VirtualHerePad** to Steam.
+   Save games and finish downloads before allowing it to close Steam. Accept
+   the offer to reopen Steam afterward, or open it yourself. If you already
+   have a VirtualHere config/license, [import it](#config-and-license) before
+   your first launch.
+4. **Find it explicitly.** Return to **Gaming Mode**, open **Library**, select
+   the **Non-Steam** tab, then open **VirtualHerePad** and select **Play**.
+   **Don't look only at Home / Recently Played:** a newly added shortcut may
+   not appear there until it has actually been launched. In Desktop Mode, use
+   Library search for `VirtualHerePad` with filters that include non-Steam games.
+5. **Connect from the other machine.** Install/open the VirtualHere client there
+   and select the Deck's controller. Leave the Deck's launcher running.
+6. **Stop when finished.** Hold **one finger in any screen corner for two
+   seconds**. VHP stops sharing and restores brightness. A local Bluetooth
+   keyboard and **Ctrl+C** are the fallback; the Deck's Steam button may be
+   forwarded to the client rather than opening the local menu.
 
-Before downloading, setup checks required tools, sudo access, writable install
-paths, and Steam account discovery. Missing/ambiguous Steam accounts produce
-warnings rather than blocking installation without a shortcut.
-Preflight does not shut down Steam. The final summary reports installation and
-shortcut status separately and tells you what to do next.
-
-Setup leaves SteamOS's read-only system partition protected: binaries go under
-`/home/.vhp/bin`, settings under `/home/.vhp/data`, and only the systemd unit and
-sudo rule go into `/etc` (normally writable through SteamOS's overlay). No
-`steamos-readonly disable` is needed on the expected stock layout. This has been
-tested on a Steam Deck; setup will report errors on unsupported layouts.
-
-Normal SteamOS updates should preserve `/home` data and binaries. If an update
-resets the `/etc` service or sudo rule, rerun setup to restore integration.
+`vhp.sh` is the launcher used by the Steam shortcut. You do **not** need to run it
+separately during installation. For testing, run `./vhp.sh` from your checkout in
+Konsole to see its output; it starts the same service and dims the screen.
 
 ## Update
 
@@ -54,218 +55,220 @@ git pull
 ./setup.sh
 ```
 
-Setup is safe to rerun: it stops the current service, replaces installed code,
-and keeps settings/license data in `/home/.vhp/data`. It does not start a service at
-boot. Each setup fetches the latest upstream binary; to require a known hash:
+Setup stops the current instance, replaces installed code, and preserves settings
+and license data. It does not start VHP or enable it at boot. Normal SteamOS
+updates should preserve `/home`; if an update resets the service or sudo rule in
+`/etc`, rerun setup to restore integration.
 
-```bash
-VHP_SHA256=<trusted-sha256> ./setup.sh
-```
+## Config and license
 
-Without this, HTTPS and the upstream host are trusted, not an independently
-verified release checksum. The downloaded binary is not stored in Git.
-
-## Steam
-
-Run setup from **Desktop Mode**. It offers to add or update a **VirtualHerePad** non-Steam
-shortcut. If Steam is running, the helper asks permission to close it with
-`steam -shutdown`. Save games and finish downloads before accepting. It waits
-up to 30 seconds after the shutdown command completes, never force-kills Steam,
-and leaves shortcuts unchanged if you decline or shutdown fails. Noninteractive
-runs never shut Steam down automatically.
-
-You can also exit Steam yourself (**Steam > Exit**, not just closing its window).
-After a successful shortcut update, the helper offers to reopen Steam. It never
-launches Steam automatically in noninteractive runs. Python 3 is used for
-shortcut creation and the local touchscreen exit monitor; setup checks for it.
-
-You can also create/update the shortcut separately, as your normal user:
-
-```bash
-python3 steam-shortcut.py
-# Check account discovery without editing shortcuts or stopping Steam:
-python3 steam-shortcut.py --check
-# If multiple accounts have userdata on this Deck, choose the ID it lists:
-python3 steam-shortcut.py --account 12345678
-```
-
-The helper backs up `shortcuts.vdf` beside the original before changing it,
-preserves unrelated shortcuts, and updates an existing VirtualHerePad, VHP, or
-vhp.sh shortcut instead of duplicating it. Older VHP entries are renamed to
-VirtualHerePad. Existing app IDs and other settings are preserved.
-It refuses to write while Steam is running or if the file format is unsupported.
-Leave Steam closed until it finishes. Noninteractive setup skips the prompt.
-
-The generated shortcut uses your checkout's actual path:
-
-- **Target:** `"/usr/bin/env"`
-- **Name:** `VirtualHerePad`
-- **Start In:** `"/home/deck/VirtualHerePad"` (or wherever you cloned it)
-- **Launch Options:** `-u LD_PRELOAD konsole --fullscreen -e "/home/deck/VirtualHerePad/vhp.sh"`
-- **Enable Steam Overlay:** on
-
-`vhp.sh` is the launcher script used by this shortcut. For troubleshooting, you
-can run `./vhp.sh` manually from your checkout in Konsole to see its output; this
-starts the same service and dims the screen. It is not an extra installation step.
-
-No specific checkout directory name is required; paths with spaces are supported.
-Setup resolves its own location, and the shortcut helper uses that actual
-path—not an assumed username or folder name. Existing `~/vhp` clones still work. After moving or
-renaming a checkout, rerun `python3 /new/path/steam-shortcut.py` (or setup) to update
-the shortcut. Installed privileged code/data stay at fixed, root-owned paths
-under `/home/.vhp`, independently of the checkout name.
-
-You can configure the shortcut fields manually instead. Keep the launcher open. To stop, **hold one finger in any screen corner for two
-seconds** (within the outer 12% of both touchscreen axes). Releasing, moving out
-of the corner, or adding another finger cancels the hold. After multiple fingers,
-lift all fingers before trying again. All four corners work regardless of panel
-rotation. The helper handles the request within its existing one-second loop.
-
-The root-owned Python monitor detects direct type-B multitouch devices by
-capabilities, not an event number or device name. It reads input non-exclusively
-(no input grab), logs no coordinates, and requires the touchscreen to remain
-local rather than forwarded through VirtualHere. Other local apps can still
-receive the touches. A finger already down when monitoring starts must lift
-before arming. Corner-hold exit and brightness restoration have been tested on
-a Steam Deck; keep the keyboard fallback available when testing other hardware.
-
-The monitor blocks on input while idle—no periodic polling of a connected idle
-touchscreen. Only a potential hold schedules a timer. If the device is absent,
-it retries discovery every ten seconds. This adds no graphical UI and should
-have small overhead, but battery impact has not been measured.
-
-A local Bluetooth keyboard can also stop it with **Ctrl+C**, including if touch
-monitoring fails. The Deck's Steam button may be forwarded to the VirtualHere
-client, so don't rely on it to open the local Steam menu. If you can access that
-menu locally, **Steam > Exit Game** also stops VHP.
-
-Only one service instance is supported. Don't open multiple launchers: closing
-one stops the shared service. The launcher sends a heartbeat every second.
-If Steam force-kills it (even SIGKILL), the root-owned service detects the missing
-heartbeat after about 10 seconds, restores brightness, and stops the server.
-A hung server gets up to 3 additional seconds before being killed. Starting the
-service directly without the launcher also expires after 10 seconds.
-To stop it manually:
-
-```bash
-sudo -n /home/.vhp/bin/vhp-root stop
-```
-
-## Settings and diagnostics
-
-- Server settings/license: `/home/.vhp/data/config.ini`, created on first run.
-  This root-owned directory (mode `0700`) is on SteamOS's persistent home
-  partition, outside the user-writable `/home/deck`. Normal SteamOS updates
-  should preserve it; keep a separate backup for recovery/reimaging.
-  Setup automatically copies an existing `/var/lib/vhp/config.ini` only if the
-  new config does not exist, leaving the original untouched as a fallback.
-- Logs: `journalctl -u vhp.service -n 100 --no-pager`
-- Status: `systemctl status vhp.service`
-- Read-only diagnostic report: `./doctor.sh` (run as your normal user).
-  Checks tools, installed ownership/permissions, sudo authorization, service,
-  backlight, sleep inhibitors, and recent logs. It also shows the installed VHP
-  commit, installation time, and recorded/actual VirtualHere SHA-256 hashes.
-  Local modifications at install time add `-dirty` to the commit; non-Git copies
-  report `unknown`. Metadata lives in `/home/.vhp/bin/build-info.txt` and does not
-  contain usernames, license data, or connection credentials.
-  Review logs before sharing them; the script does not read private server
-  configuration. It exits nonzero when
-  it finds warnings. An inactive service alone is normal.
-
-### Your VirtualHere config and license
-
-The active config is **`/home/.vhp/data/config.ini`**—not `~/.vhp/config.ini`,
-not `/home/deck/.vhp`, and not inside the Git checkout. `.vhp` is a hidden
-root-owned directory directly under `/home`; its `data` directory requires sudo
-to inspect. Check that your config exists without displaying private contents:
+The active config is **`/home/.vhp/data/config.ini`**, created on the first server
+run. It is **not** in `~/.vhp`, `/home/deck/.vhp`, or the Git checkout. The hidden
+`.vhp` directory sits directly under `/home`; its root-only `data` directory has
+mode `0700`. Check the file without displaying private contents:
 
 ```bash
 sudo ls -l /home/.vhp/data/config.ini
 ```
 
-To use a config from an existing VirtualHere installation, run setup first,
-then stop VHP and copy your file to the active location:
+To import a config from another VirtualHere installation, run setup first, then:
 
 ```bash
 sudo -n /home/.vhp/bin/vhp-root stop
 sudo install -o root -g root -m 600 /path/to/your/config.ini /home/.vhp/data/config.ini
 ```
 
-Replace `/path/to/your/config.ini` with your actual source file. This **replaces**
-the installed config; the source file is left untouched. Launch VirtualHerePad
-from Steam afterward. The file can contain license and connection credentials:
-keep it private and don't add it to Git or paste it into public bug reports.
-Normal setup updates and `./uninstall.sh` preserve it in place; no copy is made
-to the user's home directory. Only explicit `--purge-settings` removes it.
+Replace the source path with your actual file. This **replaces** the installed
+config; the source is untouched. Launch VirtualHerePad from Steam afterward.
+Setup also imports an existing `/var/lib/vhp/config.ini` if no current config
+exists, retaining the old file as a fallback.
 
-## Privileges and cleanup
+Config files can contain license and connection credentials. Keep them private;
+don't commit them or paste them into public bug reports. Normal updates and
+uninstall preserve the active config in place, without making a backup in your
+user home. Keep a separate private backup for factory resets/reimaging.
 
-Setup installs root-owned code under `/home/.vhp/bin`, a systemd service,
-and `/etc/sudoers.d/zz-vhp`, allowing only fixed **start/stop/keepalive/check**
-operations. The late-sorting filename places it after SteamOS's general sudo
-rule. The `check` operation does nothing except exit successfully; setup and
-diagnostics run it without cached authentication to verify passwordless access.
-Heartbeats contain only system uptime and live in root-only `/run/vhp`; no
-caller-supplied paths or commands are accepted.
-The running service never executes code or reads configuration from the writable
-checkout. Editing the checkout requires another password-authorized setup to
-change privileged installed code. Setup itself is trusted code: review updates
-before running it.
+## Using and stopping VHP
 
-The USB server still runs as root to access devices. Only use it on a trusted
-network; VHP does not configure a firewall or server authentication. Root-owned
-installation does not sandbox vulnerabilities in VirtualHere itself.
+- Keep only one launcher open: all launchers control the same service.
+- For touchscreen exit, hold within the outer **12% of both axes** in any corner.
+  Releasing, moving out, or adding a finger cancels the hold. After multiple
+  fingers, lift them all before retrying. A finger already down at startup must
+  also lift before the gesture can arm. All corners work regardless of rotation.
+- Touches remain available to other local apps. The touchscreen must stay local,
+  not be forwarded through VirtualHere. Corner-hold exit and brightness
+  restoration have been tested on a Steam Deck.
+- The root-owned Python monitor detects direct type-B multitouch devices by
+  capabilities, not event numbers. It makes no exclusive input grab and logs no
+  coordinates. It blocks on input when idle; only an active hold needs a timer.
+  Missing-device discovery retries every ten seconds. Battery impact has not
+  been measured, but there is no graphical UI or continuous idle polling.
+- A touch request is handled within the existing one-second service loop. If
+  Steam kills the launcher instead, its heartbeat expires after about ten
+  seconds and the service shuts down. A hung USB server gets up to three more
+  seconds before being killed. Starting the service without the launcher also
+  expires after ten seconds.
 
-A temporary `systemd-inhibit` sleep lock prevents normal system sleep.
-Backlight brightness is restored on normal stop without changing sysfs file
-permissions. Dimming is a one-time write; VHP does not continuously override
-Steam's brightness control. Adaptive brightness can relight the screen while
-VHP runs. Setup warns about this but does **not** check or change the setting:
-there is no verified shell interface for it. You can leave adaptive brightness
-enabled. If relighting becomes a problem, check **Steam > Settings > Display >
-Enable Adaptive Brightness** and optionally disable it while sharing.
-The backlight
-path is currently `amdgpu_bl0`; on hardware without it, dimming is skipped.
-Saved and restored brightness values are logged in the service journal. If the
-saved value is already zero, VHP warns and restores zero rather than guessing a
-new level. This logging helps diagnose a screen that stays dark after exit.
-A crash/power loss or forced kill of the privileged service itself may prevent
-brightness restoration; killing only the launcher is handled by the heartbeat. Sleep
-inhibitors don't prevent privileged forced suspension.
+If touch exit fails, use local-keyboard **Ctrl+C**, or **Steam > Exit Game** if you
+can reach the local Steam menu. From Konsole or SSH, you can always request:
+
+```bash
+sudo -n /home/.vhp/bin/vhp-root stop
+```
+
+### Screen brightness
+
+VHP dims once and restores the saved value on normal exit without changing sysfs
+permissions. **Steam adaptive brightness can relight the screen.** Setup warns
+about this but neither checks nor changes that setting. You can leave it enabled;
+if relighting is a problem, optionally disable **Steam > Settings > Display >
+Enable Adaptive Brightness** while sharing.
+
+The backlight path is currently `amdgpu_bl0`; dimming is skipped if unavailable.
+Saved/restored values are logged. If brightness was already zero at startup,
+VHP warns and restores zero rather than guessing a new level. Killing the
+launcher is handled by the heartbeat, but a power loss or forced kill of the
+privileged service itself can prevent restoration. Sleep inhibition does not
+prevent privileged forced suspension.
+
+## Shortcut reference and troubleshooting
+
+Setup checks tools, sudo access, writable paths, and Steam account discovery
+before downloading. Missing/ambiguous accounts produce a warning rather than
+blocking installation without a shortcut. Read the final summary to see whether
+shortcut creation succeeded or was skipped.
+
+The shortcut helper asks before closing Steam with `steam -shutdown` and waits
+up to 30 seconds after that command completes. It never force-kills Steam or
+writes shortcuts while Steam is running. Declining shutdown or a shutdown
+failure leaves shortcuts unchanged. Noninteractive setup skips shortcut prompts
+and never closes or opens Steam automatically.
+
+To manage the shortcut separately, run from the checkout:
+
+```bash
+python3 steam-shortcut.py
+# Check account discovery without editing files or stopping Steam:
+python3 steam-shortcut.py --check
+# If multiple accounts exist, use the userdata ID listed by the helper:
+python3 steam-shortcut.py --account 12345678
+```
+
+The helper backs up `shortcuts.vdf`, preserves other shortcuts, and updates an
+existing VirtualHerePad/VHP/vhp.sh entry instead of duplicating it. Old VHP names
+are renamed while app IDs and other settings are retained. Unsupported file
+formats are left unchanged. It does not fabricate play history to promote the
+shortcut into Steam's Home / Recently Played view.
+
+Manual shortcut fields for a default clone:
+
+| Field | Value |
+| --- | --- |
+| Name | `VirtualHerePad` |
+| Target | `"/usr/bin/env"` |
+| Start In | `"/home/deck/VirtualHerePad"` |
+| Launch Options | `-u LD_PRELOAD konsole --fullscreen -e "/home/deck/VirtualHerePad/vhp.sh"` |
+| Steam Overlay | On |
+| Force Steam Play compatibility tool | Off (native Linux launcher) |
+
+The scripts resolve the checkout's actual path; no username or directory name
+is assumed, and spaces are supported. Existing `~/vhp` clones still work. After
+moving a checkout, rerun `python3 /new/path/steam-shortcut.py` or setup to update
+its shortcut. Privileged installation paths are independent of the checkout.
+
+## Diagnostics
+
+```bash
+./doctor.sh
+systemctl status vhp.service
+journalctl -u vhp.service -n 100 --no-pager
+```
+
+`doctor.sh` is read-only: it checks tools, ownership, sudo access, service state,
+backlight, sleep inhibitors, and logs. It reports installed commit/time and
+recorded/actual VirtualHere binary hashes from `/home/.vhp/bin/build-info.txt`.
+Modified checkouts record `-dirty`; non-Git installations record `unknown`.
+It exits nonzero for warnings; an inactive service alone is normal. Use sudo
+for the journal command if your account cannot read the logs. Review logs before
+sharing; diagnostics do not read the private config contents.
+
+## Installation and security details
+
+Stock Steam Deck prerequisites are Git, Bash, Python 3, curl, sudo, systemd,
+Konsole, and GNU utilities. Setup downloads the current x86-64 VirtualHere server
+over HTTPS. To require a known trusted hash:
+
+```bash
+VHP_SHA256=<trusted-sha256> ./setup.sh
+```
+
+Without a pinned hash, HTTPS and the upstream host are trusted rather than an
+independently verified release checksum. The proprietary binary is not in Git.
+
+Root-owned code lives in `/home/.vhp/bin`, settings in `/home/.vhp/data`, and only
+the service and sudo rule go in `/etc` (normally writable through SteamOS's
+overlay). Setup/uninstall do not write to `/usr` or require disabling SteamOS's
+read-only protection. This layout has been tested on a Steam Deck.
+
+`/etc/sudoers.d/zz-vhp` grants only fixed **start/stop/keepalive/check** operations
+and sorts after SteamOS's general sudo rule. The harmless `check` operation
+verifies passwordless access without cached authentication. Heartbeats and touch
+exit requests use root-only `/run/vhp`; callers cannot supply arbitrary paths or
+commands. The service never runs code or reads settings from the writable
+checkout. Review changes before running setup, which installs trusted code using
+your password-authorized sudo access.
+
+VirtualHere still runs as root for device access. Root ownership is not a sandbox
+against server vulnerabilities. Use a trusted network; VHP does not configure a
+firewall or server authentication.
 
 ## Remove
 
 ```bash
 ./uninstall.sh
-# Or explicitly delete the saved license/config too:
+```
+
+This stops the service and removes installed code and the sudo rule. Settings
+remain at `/home/.vhp/data/config.ini` for reinstalling; nothing is moved to
+`/home/deck`. Remove the non-Steam shortcut manually in Steam. The checkout and
+old local files are left untouched.
+
+**Only if you want to permanently delete settings/license without a backup:**
+
+```bash
 ./uninstall.sh --purge-settings
 ```
 
-By default `/home/.vhp/data/config.ini` and its parent directories remain in
-place for reinstalling—there is no automatic backup or move to `/home/deck`.
-This hidden root-owned directory is not `~/.vhp`; use
-`sudo ls -l /home/.vhp/data/config.ini` to check it.
-**`--purge-settings` permanently deletes the config/license without a backup.**
-It removes all
-of `/home/.vhp` and any previous `/var/lib/vhp` data. Uninstall asks for sudo
-access and stops the service before removing installed code and its sudo rule.
-Neither installation nor removal writes to `/usr`.
-Remove the non-Steam shortcut manually in Steam. The checkout is never deleted
-by uninstall, even with `--purge-settings`.
+This additionally deletes `/home/.vhp` and any previous `/var/lib/vhp` data.
 
 ## License
 
-The scripts and documentation in this repository are MIT licensed; see
-[LICENSE](LICENSE). The separately downloaded VirtualHere binary is proprietary
-and is **not** covered by this license.
+Repository scripts and documentation are MIT licensed; see [LICENSE](LICENSE).
+The separately downloaded VirtualHere binary is proprietary and is **not**
+covered by that license.
 
 ## Development checks
 
+On a development machine, use Ruff for Python and shfmt/ShellCheck for Bash.
+These are development tools only, not extra Steam Deck runtime dependencies.
+With [uv](https://docs.astral.sh/uv/) available, run the formatters via its tool cache:
+
 ```bash
-python3 -m unittest discover -s tests -v
-shellcheck ./*.sh ./vhp-root
+uvx ruff check --fix .
+uvx ruff format .
+uvx --from shfmt-py shfmt -i 2 -ci -w ./*.sh ./vhp-root
 ```
 
-Tests use temporary files and mock services, not real USB devices or root access.
-Before relying on VHP, test launch, client connection, normal Steam exit, and
-forced launcher termination on the Deck; confirm brightness and sleep return.
+Verify without modifying files:
+
+```bash
+uvx ruff check .
+uvx ruff format --check .
+uvx --from shfmt-py shfmt -i 2 -ci -d ./*.sh ./vhp-root
+shellcheck ./*.sh ./vhp-root
+python3 -m unittest discover -s tests -v
+```
+
+Tests use temporary files and mock services, not USB devices or root access.
+For hardware changes, test launch, client connection, corner-hold exit, and forced
+launcher termination on the Deck; confirm brightness and sleep return.

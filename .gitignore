@@ -6,6 +6,7 @@
 # Generated Python files
 __pycache__/
 *.py[cod]
+.ruff_cache/
 
 # Local secrets, Steam data, backups, and downloaded server binaries
 .env

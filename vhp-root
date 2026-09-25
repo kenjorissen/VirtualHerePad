@@ -7,9 +7,9 @@ export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 LEASE=/run/vhp/lease
 heartbeat() {
   local uptime rest temporary
-  read -r uptime rest < /proc/uptime
+  read -r uptime rest </proc/uptime
   temporary=$(mktemp /run/vhp/lease.XXXXXX)
-  printf '%s\n' "${uptime%%.*}" > "$temporary"
+  printf '%s\n' "${uptime%%.*}" >"$temporary"
   mv -f -- "$temporary" "$LEASE"
 }
 case "$1" in
@@ -23,7 +23,7 @@ case "$1" in
     heartbeat
     exit 0
     ;;
-  start|stop)
+  start | stop)
     exec /usr/bin/systemctl "$1" vhp.service
     ;;
   run) ;;
@@ -38,7 +38,7 @@ cleanup() {
   trap - EXIT INT TERM
   # Restore first, even if the USB server takes time to terminate.
   if [[ -n "$brightness" ]]; then
-    if printf '%s\n' "$brightness" > "$BRIGHTNESS_FILE"; then
+    if printf '%s\n' "$brightness" >"$BRIGHTNESS_FILE"; then
       echo "Restored backlight brightness=$brightness"
     else
       echo "WARNING: could not restore backlight brightness=$brightness" >&2
@@ -68,12 +68,12 @@ trap 'exit 0' INT TERM
 # Give the launcher a startup grace period, then require regular heartbeats.
 heartbeat
 if [[ -r "$BRIGHTNESS_FILE" && -w "$BRIGHTNESS_FILE" ]]; then
-  brightness=$(< "$BRIGHTNESS_FILE")
+  brightness=$(<"$BRIGHTNESS_FILE")
   echo "Saved backlight brightness=$brightness from $BRIGHTNESS_FILE"
   if [[ $brightness == 0 ]]; then
     echo 'WARNING: backlight was already zero at startup; exit will restore zero.' >&2
   fi
-  printf '0\n' > "$BRIGHTNESS_FILE"
+  printf '0\n' >"$BRIGHTNESS_FILE"
 else
   echo "WARNING: backlight unavailable: $BRIGHTNESS_FILE" >&2
 fi
@@ -94,9 +94,9 @@ while kill -0 "$child" 2>/dev/null; do
     touch_monitor=''
     echo 'WARNING: touch exit monitor stopped; use local-keyboard Ctrl+C to exit.' >&2
   fi
-  read -r uptime _ < /proc/uptime
-  last=$(< "$LEASE")
-  if [[ ! $last =~ ^[0-9]+$ ]] || (( ${uptime%%.*} - last >= 10 )); then
+  read -r uptime _ </proc/uptime
+  last=$(<"$LEASE")
+  if [[ ! $last =~ ^[0-9]+$ ]] || ((${uptime%%.*} - last >= 10)); then
     echo 'Launcher heartbeat expired; stopping VHP.'
     exit 0
   fi

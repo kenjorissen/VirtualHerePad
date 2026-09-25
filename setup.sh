@@ -8,18 +8,30 @@ if [[ $EUID == 0 ]]; then
   echo 'Run ./setup.sh as your normal user, not with sudo.' >&2
   exit 1
 fi
-[[ $(uname -m) == x86_64 ]] || { echo 'An x86-64 Steam Deck is required.' >&2; exit 1; }
+[[ $(uname -m) == x86_64 ]] || {
+  echo 'An x86-64 Steam Deck is required.' >&2
+  exit 1
+}
 user=$(id -un)
-[[ $user =~ ^[a-z_][a-z0-9_-]*\$?$ ]] || { echo 'Unsupported username.' >&2; exit 1; }
+[[ $user =~ ^[a-z_][a-z0-9_-]*\$?$ ]] || {
+  echo 'Unsupported username.' >&2
+  exit 1
+}
 echo '== Preflight checks =='
 for cmd in curl sudo systemctl systemd-inhibit visudo install sha256sum konsole python3; do
-  command -v "$cmd" >/dev/null || { echo "Missing dependency: $cmd" >&2; exit 1; }
+  command -v "$cmd" >/dev/null || {
+    echo "Missing dependency: $cmd" >&2
+    exit 1
+  }
 done
 if [[ -n ${VHP_SHA256:-} && ! $VHP_SHA256 =~ ^[[:xdigit:]]{64}$ ]]; then
   echo 'Invalid VHP_SHA256.' >&2
   exit 1
 fi
-[[ -d /run/systemd/system ]] || { echo 'A running systemd system is required.' >&2; exit 1; }
+[[ -d /run/systemd/system ]] || {
+  echo 'A running systemd system is required.' >&2
+  exit 1
+}
 echo 'Checking sudo access (set a password with passwd first if needed)...'
 sudo -v
 # Probe the nearest existing install directories without creating installation data.
@@ -50,7 +62,10 @@ echo "Downloading VirtualHere from $url"
 curl --fail --location --proto '=https' --proto-redir '=https' \
   --retry 3 --connect-timeout 20 --max-time 180 \
   --output "$tmp/vhusbdx86_64" "$url"
-[[ -s "$tmp/vhusbdx86_64" ]] || { echo 'Empty download.' >&2; exit 1; }
+[[ -s "$tmp/vhusbdx86_64" ]] || {
+  echo 'Empty download.' >&2
+  exit 1
+}
 if [[ -n ${VHP_SHA256:-} ]]; then
   printf '%s  %s\n' "$VHP_SHA256" "$tmp/vhusbdx86_64" | sha256sum --check -
 else
@@ -65,9 +80,9 @@ if command -v git >/dev/null && [[ $(git rev-parse --show-toplevel 2>/dev/null |
 fi
 binary_hash=$(sha256sum "$tmp/vhusbdx86_64")
 printf 'VHP_COMMIT=%s\nVIRTUALHERE_SHA256=%s\nINSTALLED_UTC=%s\n' \
-  "$commit" "${binary_hash%% *}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$tmp/build-info.txt"
+  "$commit" "${binary_hash%% *}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$tmp/build-info.txt"
 
-printf '%s ALL=(root) NOPASSWD: /home/.vhp/bin/vhp-root start, /home/.vhp/bin/vhp-root stop, /home/.vhp/bin/vhp-root keepalive, /home/.vhp/bin/vhp-root check\n' "$user" > "$tmp/sudoers"
+printf '%s ALL=(root) NOPASSWD: /home/.vhp/bin/vhp-root start, /home/.vhp/bin/vhp-root stop, /home/.vhp/bin/vhp-root keepalive, /home/.vhp/bin/vhp-root check\n' "$user" >"$tmp/sudoers"
 visudo -cf "$tmp/sudoers"
 sudo -v
 # Reinstalling stops the old instance first so it can restore brightness.
@@ -140,7 +155,7 @@ if [[ -t 0 ]]; then
   echo 'If Steam is running, the shortcut helper will offer to shut it down gracefully.'
   if read -r -p 'Add/update the VirtualHerePad Steam shortcut now? [y/N] ' answer; then
     case "$answer" in
-      y|Y|yes|YES)
+      y | Y | yes | YES)
         if python3 steam-shortcut.py; then
           shortcut_status='ready (added, updated, or already current)'
         else
@@ -163,8 +178,12 @@ echo "Steam shortcut: $shortcut_status"
 echo 'Settings: /home/.vhp/data/config.ini (preserved on reinstall)'
 echo 'VirtualHerePad is not started or enabled at boot.'
 case "$shortcut_status" in
-  ready*) echo 'Next: open Steam if needed, launch VirtualHerePad, then connect with the VirtualHere client.' ;;
-  *) echo 'Next: run python3 steam-shortcut.py (or add the shortcut manually), then launch VirtualHerePad in Steam.' ;;
+  ready*)
+    echo 'Next: in Gaming Mode, open Library > Non-Steam > VirtualHerePad > Play.'
+    echo 'A new shortcut may not appear on Home / Recently Played until first launch.'
+    echo 'Then connect from the other machine using the VirtualHere client.'
+    ;;
+  *) echo 'Next: run python3 steam-shortcut.py (or add the shortcut manually), then find it under Library > Non-Steam.' ;;
 esac
 echo 'Diagnostics: ./doctor.sh (or run ./vhp.sh manually in Konsole to test the launcher).'
 echo 'Display: VHP dims once; it does not fight Steam adaptive brightness.'

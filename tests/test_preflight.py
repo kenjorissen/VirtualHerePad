@@ -1,78 +1,102 @@
 import hashlib
 import os
-from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class PreflightTests(unittest.TestCase):
     def block(self, folder):
-        source = (ROOT / 'setup.sh').read_text()
-        block = source.split("sudo bash <<'VHP_PREFLIGHT'\n", 1)[1].split('\nVHP_PREFLIGHT', 1)[0]
-        for path in ('/home/.vhp/bin', '/home/.vhp/data', '/etc/systemd/system', '/etc/sudoers.d'):
-            block = block.replace(path, str(folder / path.lstrip('/')))
+        source = (ROOT / "setup.sh").read_text()
+        block = source.split("sudo bash <<'VHP_PREFLIGHT'\n", 1)[1].split("\nVHP_PREFLIGHT", 1)[0]
+        for path in ("/home/.vhp/bin", "/home/.vhp/data", "/etc/systemd/system", "/etc/sudoers.d"):
+            block = block.replace(path, str(folder / path.lstrip("/")))
         return block
 
     def test_probes_leave_no_files_or_directories(self):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
-            result = subprocess.run(['bash', '-c', self.block(folder)], capture_output=True, text=True, timeout=3)
+            result = subprocess.run(
+                ["bash", "-c", self.block(folder)], capture_output=True, text=True, timeout=3
+            )
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(list(folder.iterdir()), [])
 
     def test_unwritable_path_fails(self):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
-            fake = folder / 'mktemp'
-            fake.write_text('#!/bin/bash\nexit 1\n')
+            fake = folder / "mktemp"
+            fake.write_text("#!/bin/bash\nexit 1\n")
             fake.chmod(0o755)
-            env = dict(os.environ, PATH=str(folder) + ':' + os.environ['PATH'])
-            result = subprocess.run(['bash', '-c', self.block(folder)], env=env, capture_output=True, text=True, timeout=3)
+            env = dict(os.environ, PATH=str(folder) + ":" + os.environ["PATH"])
+            result = subprocess.run(
+                ["bash", "-c", self.block(folder)],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn('Cannot write installation path', result.stderr)
+            self.assertIn("Cannot write installation path", result.stderr)
 
     def test_preflight_precedes_download(self):
-        source = (ROOT / 'setup.sh').read_text()
-        download = source.index('curl --fail')
-        for check in ('sudo -v', 'VHP_PREFLIGHT', 'steam-shortcut.py --check', 'sha256sum konsole'):
+        source = (ROOT / "setup.sh").read_text()
+        download = source.index("curl --fail")
+        for check in ("sudo -v", "VHP_PREFLIGHT", "steam-shortcut.py --check", "sha256sum konsole"):
             self.assertLess(source.index(check), download)
 
     def test_passwordless_probe_ignores_cached_authentication(self):
-        source = (ROOT / 'setup.sh').read_text()
-        self.assertIn('/etc/sudoers.d/zz-vhp', source)
-        self.assertIn('sudo rm -f -- /etc/sudoers.d/vhp', source)
-        self.assertIn('sudo -k -n /home/.vhp/bin/vhp-root check', source)
-        self.assertIn('sudo -k -n /home/.vhp/bin/vhp-root check', (ROOT / 'doctor.sh').read_text())
+        source = (ROOT / "setup.sh").read_text()
+        self.assertIn("/etc/sudoers.d/zz-vhp", source)
+        self.assertIn("sudo rm -f -- /etc/sudoers.d/vhp", source)
+        self.assertIn("sudo -k -n /home/.vhp/bin/vhp-root check", source)
+        self.assertIn("sudo -k -n /home/.vhp/bin/vhp-root check", (ROOT / "doctor.sh").read_text())
 
     def test_helper_check_is_harmless(self):
-        source = (ROOT / 'vhp-root').read_text().replace(
-            '[[ $EUID == 0 && $# == 1 ]]', '[[ $# == 1 ]]')
+        source = (
+            (ROOT / "vhp-root").read_text().replace("[[ $EUID == 0 && $# == 1 ]]", "[[ $# == 1 ]]")
+        )
         with tempfile.TemporaryDirectory() as directory:
-            result = subprocess.run(['bash', '-c', source, 'vhp-root', 'check'],
-                                    cwd=directory, capture_output=True, text=True, timeout=3)
+            result = subprocess.run(
+                ["bash", "-c", source, "vhp-root", "check"],
+                cwd=directory,
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stdout, '')
+            self.assertEqual(result.stdout, "")
             self.assertEqual(list(Path(directory).iterdir()), [])
 
     def test_metadata_without_git_checkout(self):
-        source = (ROOT / 'setup.sh').read_text()
-        block = 'commit=unknown' + source.split('commit=unknown', 1)[1].split("\nprintf '%s ALL=", 1)[0]
+        source = (ROOT / "setup.sh").read_text()
+        block = (
+            "commit=unknown" + source.split("commit=unknown", 1)[1].split("\nprintf '%s ALL=", 1)[0]
+        )
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
-            (folder / 'vhusbdx86_64').write_bytes(b'test binary fixture')
+            (folder / "vhusbdx86_64").write_bytes(b"test binary fixture")
             env = dict(os.environ, tmp=str(folder))
-            result = subprocess.run(['bash', '-c', block], cwd=folder, env=env,
-                                    capture_output=True, text=True, timeout=3)
+            result = subprocess.run(
+                ["bash", "-c", block],
+                cwd=folder,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
             self.assertEqual(result.returncode, 0, result.stderr)
-            info = (folder / 'build-info.txt').read_text()
-            self.assertIn('VHP_COMMIT=unknown\n', info)
-            self.assertIn('VIRTUALHERE_SHA256=' + hashlib.sha256(b'test binary fixture').hexdigest(), info)
-            self.assertIn('INSTALLED_UTC=', info)
+            info = (folder / "build-info.txt").read_text()
+            self.assertIn("VHP_COMMIT=unknown\n", info)
+            self.assertIn(
+                "VIRTUALHERE_SHA256=" + hashlib.sha256(b"test binary fixture").hexdigest(), info
+            )
+            self.assertIn("INSTALLED_UTC=", info)
             self.assertNotIn(str(folder), info)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

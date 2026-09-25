@@ -4,7 +4,10 @@ set -u -o pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 issues=0
 section() { printf '\n== %s ==\n' "$1"; }
-warn() { echo "WARNING: $*"; issues=$((issues + 1)); }
+warn() {
+  echo "WARNING: $*"
+  issues=$((issues + 1))
+}
 
 section 'Platform and tools'
 uname -sm
@@ -26,7 +29,7 @@ for path in /home/.vhp /home/.vhp/bin /home/.vhp/bin/vhp-root /home/.vhp/bin/vhu
     fi
     owner=$(stat -c '%u' "$path")
     mode=$(stat -c '%a' "$path")
-    if [[ $owner != 0 ]] || (( (8#$mode & 8#022) != 0 )); then
+    if [[ $owner != 0 ]] || (((8#$mode & 8#022) != 0)); then
       warn "Not root-owned or writable by group/others: $path"
     fi
   else
@@ -84,4 +87,4 @@ section 'Recent service logs (review before sharing)'
 journalctl -u vhp.service -n 40 --no-pager || true
 echo 'If logs are unavailable, run: sudo journalctl -u vhp.service -n 40 --no-pager'
 printf '\nDiagnostics complete: %s warning(s). No settings were changed.\n' "$issues"
-(( issues == 0 ))
+((issues == 0))
