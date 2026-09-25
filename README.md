@@ -172,6 +172,32 @@ sudo -n /home/.vhp/bin/vhp-root stop
   configuration. It exits nonzero when
   it finds warnings. An inactive service alone is normal.
 
+### Your VirtualHere config and license
+
+The active config is **`/home/.vhp/data/config.ini`**—not `~/.vhp/config.ini`,
+not `/home/deck/.vhp`, and not inside the Git checkout. `.vhp` is a hidden
+root-owned directory directly under `/home`; its `data` directory requires sudo
+to inspect. Check that your config exists without displaying private contents:
+
+```bash
+sudo ls -l /home/.vhp/data/config.ini
+```
+
+To use a config from an existing VirtualHere installation, run setup first,
+then stop VHP and copy your file to the active location:
+
+```bash
+sudo -n /home/.vhp/bin/vhp-root stop
+sudo install -o root -g root -m 600 /path/to/your/config.ini /home/.vhp/data/config.ini
+```
+
+Replace `/path/to/your/config.ini` with your actual source file. This **replaces**
+the installed config; the source file is left untouched. Launch VirtualHerePad
+from Steam afterward. The file can contain license and connection credentials:
+keep it private and don't add it to Git or paste it into public bug reports.
+Normal setup updates and `./uninstall.sh` preserve it in place; no copy is made
+to the user's home directory. Only explicit `--purge-settings` removes it.
+
 ## Privileges and cleanup
 
 Setup installs root-owned code under `/home/.vhp/bin`, a systemd service,
@@ -215,7 +241,12 @@ inhibitors don't prevent privileged forced suspension.
 ./uninstall.sh --purge-settings
 ```
 
-By default settings remain in `/home/.vhp/data`. `--purge-settings` removes all
+By default `/home/.vhp/data/config.ini` and its parent directories remain in
+place for reinstalling—there is no automatic backup or move to `/home/deck`.
+This hidden root-owned directory is not `~/.vhp`; use
+`sudo ls -l /home/.vhp/data/config.ini` to check it.
+**`--purge-settings` permanently deletes the config/license without a backup.**
+It removes all
 of `/home/.vhp` and any previous `/var/lib/vhp` data. Uninstall asks for sudo
 access and stops the service before removing installed code and its sudo rule.
 Neither installation nor removal writes to `/usr`.
