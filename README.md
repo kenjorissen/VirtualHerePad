@@ -56,7 +56,8 @@ packages, graphical toolkits, or virtual environment are needed.**
 7. **Stop when finished.** Hold **one finger in any screen corner for two
    seconds**. VHP stops sharing and restores brightness.
 
-Steam runs an installed copy of `vhp.sh` under `~/.local/share/VirtualHerePad`.
+Steam runs the installed `vhp-gui.sh` wrapper and `vhp.sh` under
+`~/.local/share/VirtualHerePad`.
 You do **not** need to run it separately during setup. Once the shortcut has
 been updated, the checkout can be moved or deleted without breaking normal use.
 
@@ -108,10 +109,19 @@ Sampling reuses the heartbeat loop, without persistent extra monitoring processe
 Missing battery/network tools or data show as unavailable; no TCP peers shows
 **Waiting for client**. Battery impact has not been measured.
 
-The Steam shortcut launches Konsole fullscreen with its menu, tabs, and scrollbar
-hidden for that launch. It does not change your normal Konsole profile. Some
-Konsole versions may still show a toolbar; we do not pass unsupported toolbar
-flags or change global preferences.
+The Steam shortcut uses `vhp-gui.sh` to start a separate fullscreen Konsole with
+its menu, tabs, scrollbar, and both toolbars hidden. VHP's own configuration and
+GUI XML overrides live under `~/.local/share/VirtualHerePad/konsole/`, alongside
+isolated state and cache directories. No unsupported toolbar flags are needed.
+The normal XDG environment is restored before `vhp.sh` runs. Regular Konsole
+windows and manually running `vhp.sh` in Desktop Mode are unaffected. Setup
+refreshes these disposable GUI files; uninstall removes them.
+
+When shutdown begins, the dashboard switches to a large **SHUTTING DOWN** message
+while VirtualHere exits. Touch/service cleanup is reported through the existing
+heartbeat check, normally within about a second; Ctrl+C shows it immediately.
+The message remains visible until the stop command finishes, then terminal state
+is restored. The brief shutdown wait remains necessary for orderly USB cleanup.
 
 For corner-hold exit, keep one finger within the outer **12% of both screen axes**
 for two seconds. Releasing, moving out, or adding another finger cancels it.
@@ -141,8 +151,7 @@ sudoedit /home/.vhp/data/brightness-percent
 
 Put a single whole number from **0 to 100** in the file, without a `%` sign, then
 stop and relaunch VHP. Setup creates the file only if it is missing and never
-overwrites an existing preference. **Upgrading preserves an existing `5`; change
-it to `10` if you want the new default.** Existing numbers now use the nonlinear
+overwrites an existing preference. Existing numbers now use the nonlinear
 mapping, rather than the old raw hardware percentage.
 
 VHP selects a curve using the DMI product name and `max_brightness`:
@@ -318,7 +327,7 @@ Manual fields for the normal `deck` account:
 | Name | `VirtualHerePad` |
 | Target | `"/usr/bin/env"` |
 | Start In | `"/home/deck/.local/share/VirtualHerePad"` |
-| Launch Options | `-u LD_PRELOAD konsole --fullscreen --hide-menubar --hide-tabbar -p ScrollBarPosition=2 -e "/home/deck/.local/share/VirtualHerePad/vhp.sh"` |
+| Launch Options | `-u LD_PRELOAD "/home/deck/.local/share/VirtualHerePad/vhp-gui.sh"` |
 | Steam Overlay | On |
 | Force Steam Play compatibility tool | Off (native Linux launcher) |
 

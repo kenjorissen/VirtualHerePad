@@ -25,9 +25,10 @@ def fields(entry):
 def install_launcher(home):
     install_dir = home / ".local/share/VirtualHerePad"
     install_dir.mkdir(parents=True)
-    launcher = install_dir / "vhp.sh"
-    launcher.write_text("#!/bin/bash\nexit 0\n")
-    launcher.chmod(0o755)
+    for name in ("vhp.sh", "vhp-gui.sh"):
+        launcher = install_dir / name
+        launcher.write_text("#!/bin/bash\nexit 0\n")
+        launcher.chmod(0o755)
     return install_dir
 
 
@@ -80,8 +81,7 @@ class ShortcutTests(unittest.TestCase):
         self.assertEqual(values[b"exe"], b'"/usr/bin/env"')
         self.assertEqual(
             values[b"LaunchOptions"],
-            b"-u LD_PRELOAD konsole --fullscreen --hide-menubar --hide-tabbar "
-            b'-p ScrollBarPosition=2 -e "/home/deck/my vhp/vhp.sh"',
+            b'-u LD_PRELOAD "/home/deck/my vhp/vhp-gui.sh"',
         )
         self.assertEqual(values[b"AllowOverlay"], struct.pack("<I", 1))
 
@@ -146,7 +146,7 @@ class ShortcutTests(unittest.TestCase):
                 self.assertEqual(values[b"appname"], b"VirtualHerePad")
                 self.assertEqual(values[b"appid"], struct.pack("<I", 123))
                 self.assertEqual(values[b"StartDir"], b'"/home/deck/VirtualHerePad"')
-                self.assertIn(b"/home/deck/VirtualHerePad/vhp.sh", values[b"LaunchOptions"])
+                self.assertIn(b"/home/deck/VirtualHerePad/vhp-gui.sh", values[b"LaunchOptions"])
                 self.assertEqual(values[b"icon"], b"/art.png")
                 self.assertEqual(shortcut.update(result, Path("/home/deck/VirtualHerePad")), result)
 
@@ -171,7 +171,7 @@ class ShortcutTests(unittest.TestCase):
                 shortcut.main()
             values = fields(entries((account / "config/shortcuts.vdf").read_bytes())[0])
             self.assertEqual(values[b"StartDir"], f'"{installed}"'.encode())
-            self.assertIn(f'"{installed}/vhp.sh"'.encode(), values[b"LaunchOptions"])
+            self.assertIn(f'"{installed}/vhp-gui.sh"'.encode(), values[b"LaunchOptions"])
             self.assertNotIn(str(checkout).encode(), values[b"LaunchOptions"])
 
     def test_missing_installed_launcher_does_not_close_steam(self):

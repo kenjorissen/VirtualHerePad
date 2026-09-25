@@ -26,6 +26,7 @@ class LifecycleTests(unittest.TestCase):
             folder = Path(directory)
             runtime = folder / "runtime"
             runtime.mkdir()
+            (runtime / "stopping").touch()  # A new run must clear stale state.
             brightness = folder / "brightness"
             brightness.write_text("73\n")
             brightness.chmod(0o640)
@@ -86,6 +87,7 @@ class LifecycleTests(unittest.TestCase):
                     if time.monotonic() > deadline or service.poll() is not None:
                         self.fail("Mock service failed to dim brightness")
                     time.sleep(0.02)
+                self.assertFalse((runtime / "stopping").exists())
                 if kill_launcher:
                     env = dict(os.environ, PATH=f"{folder}:" + os.environ["PATH"])
                     client = subprocess.Popen(
@@ -113,6 +115,9 @@ class LifecycleTests(unittest.TestCase):
                     service.send_signal(signal.SIGTERM)
                 output, _ = service.communicate(timeout=17)
                 self.assertEqual(service.returncode, 0, output)
+                self.assertTrue((runtime / "stopping").exists())
+                status = subprocess.run([str(helper), "keepalive"], capture_output=True, timeout=2)
+                self.assertEqual(status.returncode, 2)
                 if kill_launcher:
                     self.assertIn("heartbeat expired", output)
                 if touch_exit:

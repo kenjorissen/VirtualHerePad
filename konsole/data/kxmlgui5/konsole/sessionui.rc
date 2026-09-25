@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE gui>
+<gui name="session" version="0">
+  <ToolBar name="sessionToolbar" hidden="true">
+    <text>Session Toolbar</text>
+    <Action name="edit_copy"/>
+    <Action name="edit_paste"/>
+    <Action name="edit_find"/>
+    <Action name="hamburger_menu"/>
+  </ToolBar>
+</gui>

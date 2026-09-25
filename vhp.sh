@@ -17,6 +17,7 @@ client_count=0
 client_status='Status unavailable'
 ui_active=false
 ui_dirty=true
+shutdown_shown=false
 last_display=''
 rows=24
 cols=80
@@ -225,6 +226,40 @@ paint_dashboard() {
   text_at "$((top + 2 * height + 12))" "$left" 'Local keyboard: Ctrl+C | TCP link only; device use not checked'
 }
 
+show_shutdown() {
+  if [[ ${shutdown_shown:-false} == true && $ui_dirty == false ]]; then return 0; fi
+  shutdown_shown=true
+  ui_dirty=false
+  if ! "$ui_active"; then
+    printf 'SHUTTING DOWN - waiting for VirtualHere to stop...\n'
+    return 0
+  fi
+  local message='SHUTTING DOWN' scale=1 width=51 height=5 top left
+  local -A glyph=(
+    [S]='###|#  |###|  #|###' [H]='# #|# #|###|# #|# #'
+    [U]='# #|# #|# #|# #|###' [T]='###| # | # | # | # '
+    [I]='###| # | # | # |###' [N]='# #|###|###|###|# #'
+    [G]='###|#  |# #|# #|###' [D]='## |# #|# #|# #|## '
+    [O]='###|# #|# #|# #|###' [W]='# #|# #|###|###|# #'
+    [' ']='   |   |   |   |   '
+  )
+  printf '\033[0;37;40m\033[2J\033[1;36m'
+  if ((cols < 55 || rows < 10)); then
+    text_at 1 1 "$message"
+    printf '\033[0;37;40m'
+    text_at 3 1 'Waiting for VirtualHere to stop...'
+    return 0
+  fi
+  if ((cols >= 106 && rows >= 18)); then scale=2; fi
+  width=$((width * scale))
+  height=$((height * scale))
+  top=$(((rows - height - 3) / 2 + 1))
+  left=$(((cols - width) / 2 + 1))
+  draw_block "$message" "$top" "$left" "$scale" 1
+  printf '\033[0;37;40m'
+  text_at "$((top + height + 2))" "$((cols / 2 - 16))" 'Waiting for VirtualHere to stop...'
+}
+
 resize_dashboard() {
   local size
   if "$ui_active" && size=$(stty size 2>/dev/null) && [[ $size =~ ^[0-9]+\ [0-9]+$ ]]; then
@@ -239,12 +274,13 @@ resize_dashboard() {
 cleanup() {
   local status=$?
   trap - EXIT INT TERM WINCH
+  show_shutdown
+  sudo -n "$HELPER" stop || true
   if "$ui_active"; then printf '\033[0m\033[?25h\033[?1049l'; fi
   if ((status != 0)); then
     echo "VHP exited with code $status. Inspect logs: journalctl -u vhp.service" >&2
   fi
-  echo 'Stopping VHP...'
-  sudo -n "$HELPER" stop || true
+  echo 'VHP stopped.'
 }
 trap cleanup EXIT
 trap 'exit 0' INT TERM
@@ -259,25 +295,36 @@ trap 'ui_dirty=true' WINCH
 next_battery_check=0
 next_network_check=0
 while /usr/bin/systemctl is-active --quiet vhp.service; do
-  if ! sudo -n "$HELPER" keepalive; then
-    # A touch request may have stopped the service between these two calls.
-    if ! /usr/bin/systemctl is-active --quiet vhp.service; then break; fi
-    echo 'ERROR: could not refresh the VHP heartbeat.' >&2
-    exit 1
+  if sudo -n "$HELPER" keepalive; then
+    :
+  else
+    keepalive_status=$?
+    if ((keepalive_status == 2)); then
+      show_shutdown
+    elif ! /usr/bin/systemctl is-active --quiet vhp.service; then
+      break
+    else
+      echo 'ERROR: could not refresh the VHP heartbeat.' >&2
+      exit 1
+    fi
   fi
   # Reuse the existing heartbeat loop; no extra polling processes or animations.
   if "$ui_dirty"; then resize_dashboard; fi
-  if ((SECONDS >= next_battery_check)); then
-    sample_battery
-    next_battery_check=$((SECONDS + 30))
+  if "$shutdown_shown"; then
+    show_shutdown
+  else
+    if ((SECONDS >= next_battery_check)); then
+      sample_battery
+      next_battery_check=$((SECONDS + 30))
+    fi
+    if ((SECONDS >= next_network_check)); then
+      sample_network
+      next_network_check=$((SECONDS + 5))
+    fi
+    # Bash's builtin clock formatting adds no subprocess and displays no seconds.
+    printf -v clock_time '%(%H:%M)T' -1
+    paint_dashboard
   fi
-  if ((SECONDS >= next_network_check)); then
-    sample_network
-    next_network_check=$((SECONDS + 5))
-  fi
-  # Bash's builtin clock formatting adds no subprocess and displays no seconds.
-  printf -v clock_time '%(%H:%M)T' -1
-  paint_dashboard
   # Keep a foreground input loop for the Konsole/Steam input context.
   if [[ -t 0 ]]; then
     read -rsn1 -t 1 _ || true
@@ -289,4 +336,3 @@ if /usr/bin/systemctl is-failed --quiet vhp.service; then
   echo 'VHP failed. Inspect logs with: journalctl -u vhp.service' >&2
   exit 1
 fi
-echo 'VHP stopped.'

@@ -160,8 +160,13 @@ fi
 # BEGIN USER_INSTALL
 # No runtime tool should depend on this checkout remaining in place.
 install -d -m 755 "$USER_ROOT"
-install -m 755 vhp.sh doctor.sh uninstall.sh "$USER_ROOT/"
+install -m 755 vhp.sh vhp-gui.sh doctor.sh uninstall.sh "$USER_ROOT/"
 install -m 644 steam-shortcut.py "$USER_ROOT/steam-shortcut.py"
+install -d -m 700 "$USER_ROOT/konsole/config" "$USER_ROOT/konsole/data/kxmlgui5/konsole"
+install -m 600 konsole/config/konsolerc "$USER_ROOT/konsole/config/konsolerc"
+install -m 600 konsole/data/kxmlgui5/konsole/*.rc "$USER_ROOT/konsole/data/kxmlgui5/konsole/"
+# GUI state is disposable: do not let an older saved toolbar layout override XML.
+rm -f -- "$USER_ROOT/konsole/state/konsolestaterc"
 # END USER_INSTALL
 
 echo 'VirtualHerePad components installed successfully.'

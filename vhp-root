@@ -20,6 +20,9 @@ case "$1" in
   keepalive)
     # The service owns this root-only runtime directory.
     [[ -d /run/vhp ]] || exit 1
+    # Distinct status lets the unprivileged UI show shutdown without reading
+    # the private runtime directory or adding a new sudo capability.
+    [[ ! -e /run/vhp/stopping ]] || exit 2
     heartbeat
     exit 0
     ;;
@@ -125,6 +128,10 @@ child=''
 touch_monitor=''
 cleanup() {
   trap - EXIT INT TERM
+  # Notify the UI before relighting the screen; cleanup may take a few seconds.
+  if ! : >/run/vhp/stopping; then
+    echo 'WARNING: could not signal shutdown to the dashboard.' >&2
+  fi
   # Restore first, even if the USB server takes time to terminate.
   if [[ -n "$brightness" ]]; then
     if printf '%s\n' "$brightness" >"$BRIGHTNESS_FILE"; then
@@ -155,6 +162,7 @@ trap cleanup EXIT
 trap 'exit 0' INT TERM
 
 # Give the launcher a startup grace period, then require regular heartbeats.
+rm -f /run/vhp/stopping
 heartbeat
 apply_brightness
 

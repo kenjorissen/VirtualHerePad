@@ -1,0 +1,3 @@
+# VHP-only Konsole configuration; never installed in the user's normal config.
+[MainWindow]
+MenuBar=Disabled

@@ -37,8 +37,10 @@ else
   echo 'Preserved settings/license in /home/.vhp/data (and any previous config copies).'
 fi
 # Remove only our known user tools, not other files someone may have put here.
-rm -f -- "$USER_ROOT/vhp.sh" "$USER_ROOT/doctor.sh" \
+rm -f -- "$USER_ROOT/vhp.sh" "$USER_ROOT/vhp-gui.sh" "$USER_ROOT/doctor.sh" \
   "$USER_ROOT/steam-shortcut.py" "$USER_ROOT/uninstall.sh"
+# This entire subtree is VHP's disposable GUI configuration/state/cache.
+rm -rf -- "$USER_ROOT/konsole"
 if [[ -d "$USER_ROOT" ]]; then rmdir -- "$USER_ROOT" 2>/dev/null || true; fi
 echo 'Uninstalled. Remove the VirtualHerePad non-Steam shortcut manually in Steam.'
 echo 'The checkout and any old virtualhere/ files were left untouched.'

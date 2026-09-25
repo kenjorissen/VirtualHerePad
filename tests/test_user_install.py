@@ -1,13 +1,15 @@
+import json
 import os
 import shlex
 import shutil
 import subprocess
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-TOOLS = ("vhp.sh", "doctor.sh", "uninstall.sh", "steam-shortcut.py")
+TOOLS = ("vhp.sh", "vhp-gui.sh", "doctor.sh", "uninstall.sh", "steam-shortcut.py")
 
 
 class UserInstallTests(unittest.TestCase):
@@ -23,6 +25,7 @@ class UserInstallTests(unittest.TestCase):
         self.env = dict(os.environ, HOME=str(self.home), USER_ROOT=str(self.installed))
         for name in TOOLS:
             shutil.copy2(ROOT / name, self.checkout / name)
+        shutil.copytree(ROOT / "konsole", self.checkout / "konsole")
 
     def install(self):
         source = (ROOT / "setup.sh").read_text()
@@ -123,6 +126,74 @@ class UserInstallTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Uninstalled.", result.stdout)
         self.assertFalse(self.installed.exists())
+
+    def test_gui_assets_hide_both_toolbars_and_reinstall_discards_gui_state(self):
+        self.install()
+        for filename, toolbar in (
+            ("konsoleui.rc", "mainToolBar"),
+            ("sessionui.rc", "sessionToolbar"),
+        ):
+            path = self.installed / "konsole/data/kxmlgui5/konsole" / filename
+            root = ET.parse(path).getroot()
+            self.assertEqual(root.attrib["version"], "0")
+            element = root.find("ToolBar")
+            self.assertEqual(element.attrib["name"], toolbar)
+            self.assertEqual(element.attrib["hidden"], "true")
+        state = self.installed / "konsole/state/konsolestaterc"
+        state.parent.mkdir()
+        state.write_text("outdated GUI layout")
+        self.install()
+        self.assertFalse(state.exists())
+
+    def test_gui_isolates_konsole_and_restores_child_environment_without_checkout(self):
+        self.install()
+        shutil.rmtree(self.checkout)
+        mocks = self.root / "mock gui"
+        mocks.mkdir()
+        konsole = mocks / "konsole"
+        konsole.write_text(
+            "#!/usr/bin/env python3\nimport json, os, sys\n"
+            "from pathlib import Path\n"
+            'Path(os.environ["GUI_CAPTURE"]).write_text(json.dumps({"args": sys.argv[1:], "env": dict(os.environ)}))\n'
+            'args = sys.argv[sys.argv.index("-e") + 1:]\n'
+            "os.execv(args[0], args)\n"
+        )
+        konsole.chmod(0o755)
+        (self.installed / "vhp.sh").write_text(
+            "#!/usr/bin/env python3\nimport json, os\nfrom pathlib import Path\n"
+            'Path(os.environ["CHILD_CAPTURE"]).write_text(json.dumps(dict(os.environ)))\n'
+        )
+        keys = ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME")
+        for configured in (False, True):
+            env = dict(
+                self.env,
+                PATH=str(mocks) + ":" + os.environ["PATH"],
+                GUI_CAPTURE=str(self.root / "gui.json"),
+                CHILD_CAPTURE=str(self.root / "child.json"),
+            )
+            for key in keys:
+                env.pop(key, None)
+            if configured:
+                env.update({key: str(self.root / ("normal " + key)) for key in keys})
+                env["XDG_CACHE_HOME"] = ""  # Preserve empty as well as unset.
+            result = subprocess.run(
+                [str(self.installed / "vhp-gui.sh")],
+                env=env,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            gui = json.loads((self.root / "gui.json").read_text())
+            child = json.loads((self.root / "child.json").read_text())
+            for key, subdir in zip(keys, ("config", "data", "state", "cache")):
+                self.assertEqual(gui["env"][key], str(self.installed / "konsole" / subdir))
+                self.assertEqual(child.get(key), env.get(key))
+                self.assertEqual(key in child, key in env)
+            self.assertIn("--separate", gui["args"])
+            self.assertIn("--fullscreen", gui["args"])
+            self.assertNotIn("--hide-toolbars", gui["args"])
 
     def test_reinstall_updates_user_tools_without_removing_other_files(self):
         self.install()

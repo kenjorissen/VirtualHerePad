@@ -93,6 +93,8 @@ def update(data, install_dir):
             values.get(b"appname", b"").lower() in (b"vhp", b"virtualherepad")
             or b"/vhp.sh" in values.get(b"LaunchOptions", b"")
             or b"/vhp.sh" in values.get(b"exe", b"")
+            or b"/vhp-gui.sh" in values.get(b"LaunchOptions", b"")
+            or b"/vhp-gui.sh" in values.get(b"exe", b"")
         ):
             matches.append(i)
     if len(matches) > 1:
@@ -108,8 +110,7 @@ def update(data, install_dir):
         text("StartDir", f'"{path}"'),
         text(
             "LaunchOptions",
-            f"-u LD_PRELOAD konsole --fullscreen --hide-menubar --hide-tabbar "
-            f'-p ScrollBarPosition=2 -e "{path}/vhp.sh"',
+            f'-u LD_PRELOAD "{path}/vhp-gui.sh"',
         ),
         number("AllowOverlay", 1),
     ]
@@ -280,11 +281,12 @@ def main():
         print(f"Steam account ready: {account}; shortcuts: {path}")
         return
     install_dir = Path.home() / ".local/share/VirtualHerePad"
-    launcher = install_dir / "vhp.sh"
-    if not launcher.is_file() or not os.access(launcher, os.X_OK):
-        parser.error(
-            f"Installed launcher missing or not executable: {launcher}; run setup.sh first"
-        )
+    for name in ("vhp.sh", "vhp-gui.sh"):
+        launcher = install_dir / name
+        if not launcher.is_file() or not os.access(launcher, os.X_OK):
+            parser.error(
+                f"Installed launcher missing or not executable: {launcher}; run setup.sh first"
+            )
     try:
         ensure_steam_closed()
     except ValueError as exc:

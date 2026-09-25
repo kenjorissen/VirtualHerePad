@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE gui>
+<!-- Version 0 lets KDE merge current system menus while keeping our toolbar override. -->
+<gui name="konsole" version="0">
+  <ToolBar name="mainToolBar" hidden="true">
+    <text>Main Toolbar</text>
+    <Action name="new-tab"/>
+    <Action name="split-view"/>
+  </ToolBar>
+</gui>

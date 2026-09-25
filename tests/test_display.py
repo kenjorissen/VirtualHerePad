@@ -350,11 +350,62 @@ class DashboardTests(unittest.TestCase):
         text = self.run_dashboard({}, "rows=2; cols=10; text_at 1 8 ABCDEFG; text_at 3 1 HIDDEN")
         self.assertEqual(text, "\033[1;8HABC")
 
+    def test_shutdown_screen_is_large_idempotent_and_has_compact_fallback(self):
+        text = self.run_dashboard({}, "ui_active=true; show_shutdown; show_shutdown")
+        self.assertEqual(text.count("Waiting for VirtualHere to stop..."), 1)
+        self.assertIn("#", text)
+        self.assertNotIn("SERVER RUNNING", text)
+        text = self.run_dashboard({}, "ui_active=true; cols=40; rows=8; show_shutdown")
+        self.assertIn("SHUTTING DOWN", text)
+        text = self.run_dashboard({}, "show_shutdown; show_shutdown")
+        self.assertEqual(text.count("SHUTTING DOWN"), 1)
+        self.assertNotIn("\033", text)
+
+    def test_service_shutdown_notification_replaces_dashboard_without_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            helper = folder / "helper"
+            helper.write_text("#!/bin/bash\n[[ $1 != keepalive ]] || exit 2\n")
+            sudo = folder / "sudo"
+            sudo.write_text('#!/bin/bash\nshift\nexec "$@"\n')
+            systemctl = folder / "systemctl"
+            systemctl.write_text(
+                '#!/bin/bash\n[[ $1 == is-active && ! -e "$ACTIVE_CHECK" ]] || exit 1\ntouch "$ACTIVE_CHECK"\n'
+            )
+            launcher = folder / "launcher"
+            launcher.write_text(
+                (ROOT / "vhp.sh")
+                .read_text()
+                .replace("/home/.vhp/bin/vhp-root", str(helper))
+                .replace("/usr/bin/systemctl", str(systemctl))
+            )
+            for command in (helper, sudo, systemctl, launcher):
+                command.chmod(0o755)
+            result = subprocess.run(
+                [str(launcher)],
+                stdin=subprocess.DEVNULL,
+                env=dict(
+                    os.environ,
+                    PATH=f"{folder}:" + os.environ["PATH"],
+                    ACTIVE_CHECK=str(folder / "active"),
+                ),
+                capture_output=True,
+                text=True,
+                timeout=4,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.count("SHUTTING DOWN"), 1)
+            self.assertNotIn("Server running", result.stdout)
+            self.assertNotIn("ERROR", result.stderr)
+
     def test_ctrl_c_restores_terminal_and_stops_service(self):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
             helper = folder / "helper"
-            helper.write_text('#!/bin/bash\nprintf "%s\\n" "$1" >> "$CALLS"\n')
+            helper.write_text(
+                '#!/bin/bash\nprintf "%s\\n" "$1" >> "$CALLS"\n'
+                "if [[ $1 == stop ]]; then sleep 0.1; echo MOCK_STOP_FINISHED; fi\n"
+            )
             sudo = folder / "sudo"
             sudo.write_text('#!/bin/bash\nshift\nexec "$@"\n')
             systemctl = folder / "systemctl"
@@ -412,6 +463,13 @@ class DashboardTests(unittest.TestCase):
                 self.assertEqual(process.returncode, 0, output.decode(errors="replace"))
                 self.assertIn(b"\x1b[?1049h", output)
                 self.assertIn(b"\x1b[?25h\x1b[?1049l", output)
+                self.assertLess(
+                    output.index(b"Waiting for VirtualHere to stop..."),
+                    output.index(b"MOCK_STOP_FINISHED"),
+                )
+                self.assertLess(
+                    output.index(b"MOCK_STOP_FINISHED"), output.index(b"\x1b[?25h\x1b[?1049l")
+                )
                 self.assertEqual(calls.read_text().splitlines()[-1], "stop")
             finally:
                 if process.poll() is None:
