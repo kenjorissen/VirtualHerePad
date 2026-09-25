@@ -31,7 +31,7 @@ class LifecycleTests(unittest.TestCase):
             brightness.chmod(0o640)
             (folder / "max_brightness").write_text("200\n")
             preference = folder / "brightness-percent"
-            preference.write_text("5\n")
+            preference.write_text("10\n")
             server = folder / "server"
             # Ignore TERM to verify bounded shutdown and escalation too.
             server.write_text(
@@ -82,7 +82,7 @@ class LifecycleTests(unittest.TestCase):
             try:
                 # Bounded readiness check for this local test fixture.
                 deadline = time.monotonic() + 3
-                while brightness.read_text().strip() != "10":
+                while brightness.read_text().strip() != "1":
                     if time.monotonic() > deadline or service.poll() is not None:
                         self.fail("Mock service failed to dim brightness")
                     time.sleep(0.02)

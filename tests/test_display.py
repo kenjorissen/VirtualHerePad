@@ -22,7 +22,7 @@ def functions(name, marker):
 
 
 class BrightnessTests(unittest.TestCase):
-    def apply(self, preference, maximum="599000", original="400000"):
+    def apply(self, preference, maximum="599000", original="400000", product="Galileo"):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
             level = folder / "brightness"
@@ -31,7 +31,15 @@ class BrightnessTests(unittest.TestCase):
             setting = folder / "percent"
             if preference is not None:
                 setting.write_text(preference)
-            env = dict(os.environ, BRIGHTNESS_FILE=str(level), BRIGHTNESS_PERCENT_FILE=str(setting))
+            model = folder / "product_name"
+            if product is not None:
+                model.write_text(product + "\n")
+            env = dict(
+                os.environ,
+                BRIGHTNESS_FILE=str(level),
+                BRIGHTNESS_PERCENT_FILE=str(setting),
+                DMI_PRODUCT_FILE=str(model),
+            )
             result = subprocess.run(
                 [
                     "bash",
@@ -49,27 +57,78 @@ class BrightnessTests(unittest.TestCase):
 
     def test_percentage_conversion_and_original_preservation(self):
         for percent, expected in (
-            ("0", "0"),
-            ("5", "29950"),
-            ("25", "149750"),
-            ("100", "599000"),
-            ("005", "29950"),
+            ("0", "1207"),
+            ("5", "2027"),
+            ("10", "3405"),
+            ("20", "9604"),
+            ("30", "27086"),
+            ("40", "76387"),
+            ("50", "215423"),
+            ("60", "279370"),
+            ("70", "362298"),
+            ("80", "469843"),
+            ("90", "593677"),
+            ("95", "593677"),
+            ("100", "593677"),
+            ("010", "3405"),
         ):
             with self.subTest(percent=percent):
                 actual, result = self.apply(percent + "\n")
                 self.assertEqual(actual, expected)
                 self.assertIn("saved=400000", result.stdout)
+                self.assertIn("calibrated Galileo OLED", result.stderr)
+
+    def test_other_models_and_ranges_use_generic_gamma(self):
+        for product, maximum, expected in (
+            ("Jupiter", "599000", "3779"),
+            ("Unknown", "599000", "3779"),
+            (None, "599000", "3779"),
+            ("Galileo", "65535", "413"),
+        ):
+            with self.subTest(product=product, maximum=maximum):
+                actual, result = self.apply("10", maximum=maximum, product=product)
+                self.assertEqual(actual, expected)
+                self.assertIn("generic perceptual gamma 2.2", result.stderr)
 
     def test_rounds_to_nearest_hardware_step(self):
-        actual, _ = self.apply("5", maximum="255", original="200")
-        self.assertEqual(actual, "13")
+        actual, _ = self.apply("10", maximum="255", original="200")
+        self.assertEqual(actual, "2")
+
+    def test_generic_endpoints(self):
+        for percent, expected in (("0", "0"), ("100", "255")):
+            actual, _ = self.apply(percent, maximum="255", original="200", product="Jupiter")
+            self.assertEqual(actual, expected)
+
+    def test_curves_are_monotonic_and_bounded_at_every_step(self):
+        with tempfile.TemporaryDirectory() as directory:
+            model = Path(directory) / "product_name"
+            for product in ("Galileo", "Jupiter"):
+                with self.subTest(product=product):
+                    model.write_text(product + "\n")
+                    result = subprocess.run(
+                        [
+                            "bash",
+                            "-euc",
+                            functions("vhp-root", "BRIGHTNESS_FUNCTIONS")
+                            + '\nfor step in {0..100}; do brightness_target 599000 "$step"; done',
+                        ],
+                        env=dict(os.environ, DMI_PRODUCT_FILE=str(model)),
+                        capture_output=True,
+                        text=True,
+                        timeout=20,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    values = [int(value) for value in result.stdout.splitlines()]
+                    self.assertEqual(len(values), 101)
+                    self.assertEqual(values, sorted(values))
+                    self.assertTrue(all(0 <= value <= 599000 for value in values))
 
     def test_missing_invalid_and_injection_values_fall_back(self):
         for value in (None, "", "101", "-1", "5%", "5.5", "5\n6", "$(exit 77)", "9999999999999999"):
             with self.subTest(value=value):
                 actual, result = self.apply(value)
-                self.assertEqual(actual, "29950")
-                self.assertIn("using 5%", result.stderr)
+                self.assertEqual(actual, "3405")
+                self.assertIn("using 10%", result.stderr)
 
     def read_preference(self, path):
         def limit_memory():
@@ -93,13 +152,13 @@ class BrightnessTests(unittest.TestCase):
                 stream.truncate(1024**3)  # Sparse: do not allocate a gigabyte of data.
             result = self.read_preference(path)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stdout, "5\n")
+            self.assertEqual(result.stdout, "10\n")
             self.assertIn("missing/invalid", result.stderr)
 
     def test_binary_junk_and_extra_lines_are_rejected_but_crlf_is_valid(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "percent"
-            for data, expected in ((b"25\x00", "5\n"), (b"25\n\n", "5\n"), (b"25\r\n", "25\n")):
+            for data, expected in ((b"25\x00", "10\n"), (b"25\n\n", "10\n"), (b"25\r\n", "25\n")):
                 with self.subTest(data=data):
                     path.write_bytes(data)
                     result = self.read_preference(path)
@@ -119,7 +178,7 @@ class BrightnessTests(unittest.TestCase):
                 with self.subTest(path=path):
                     result = self.read_preference(path)
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertEqual(result.stdout, "5\n")
+                    self.assertEqual(result.stdout, "10\n")
                     self.assertIn("missing/invalid", result.stderr)
 
     def test_bad_maximum_or_original_leaves_backlight_unchanged(self):

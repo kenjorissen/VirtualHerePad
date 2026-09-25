@@ -32,10 +32,11 @@ esac
 
 BRIGHTNESS_FILE=/sys/class/backlight/amdgpu_bl0/brightness
 BRIGHTNESS_PERCENT_FILE=/home/.vhp/data/brightness-percent
+DMI_PRODUCT_FILE=/sys/class/dmi/id/product_name
 brightness=''
 
 # BEGIN BRIGHTNESS_FUNCTIONS
-# This file is data, never sourced/executed. Invalid/missing preferences use 5%.
+# This file is data, never sourced/executed. Invalid/missing preferences use 10%.
 read_brightness_percent() {
   # Six bytes are enough to validate 100 + CRLF and detect excess data.
   # NONBLOCK and NOFOLLOW avoid hanging on a FIFO or following a symlink.
@@ -45,7 +46,7 @@ import re
 import stat
 import sys
 
-percent = 5
+percent = 10
 try:
     fd = os.open(sys.argv[1], os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
     try:
@@ -58,9 +59,35 @@ try:
         raise ValueError("expected an integer from 0 to 100")
     percent = int(data)
 except (OSError, ValueError):
-    print("Brightness preference missing/invalid; using 5% (expected integer 0-100).", file=sys.stderr)
+    print("Brightness preference missing/invalid; using 10% (expected integer 0-100).", file=sys.stderr)
 print(percent)
 VHP_PERCENT
+}
+
+brightness_target() {
+  # Only use the empirical curve on the measured OLED model AND range.
+  # Do not silently scale it onto LCD/unknown panels with different responses.
+  /usr/bin/python3 -I - "$1" "$2" "${DMI_PRODUCT_FILE:-/sys/class/dmi/id/product_name}" <<'VHP_TARGET'
+import sys
+
+maximum, steps = map(int, sys.argv[1:3])
+try:
+    with open(sys.argv[3], "rb") as stream:
+        product = stream.read(64).strip()
+except OSError:
+    product = b""
+if product == b"Galileo" and maximum == 599000:
+    anchors = (1207, 3405, 9604, 27086, 76387, 215423,
+               279370, 362298, 469843, 593677, 593677)
+    index = min(steps // 10, len(anchors) - 2)
+    fraction = (steps - index * 10) / 10
+    raw = anchors[index] * (anchors[index + 1] / anchors[index]) ** fraction
+    print("Brightness mapping: calibrated Galileo OLED steps.", file=sys.stderr)
+else:
+    raw = maximum * (steps / 100) ** 2.2
+    print("Brightness mapping: generic perceptual gamma 2.2 (uncalibrated model/range).", file=sys.stderr)
+print(min(maximum, max(0, int(raw + 0.5))))
+VHP_TARGET
 }
 
 apply_brightness() {
@@ -79,13 +106,13 @@ apply_brightness() {
       echo 'WARNING: invalid original brightness; leaving backlight unchanged.' >&2
       return 0
     fi
-    target=$(((10#$maximum * percent + 50) / 100))
+    target=$(brightness_target "$maximum" "$percent")
     echo "Saved backlight brightness=$brightness from $BRIGHTNESS_FILE"
     if [[ $brightness == 0 ]]; then
       echo 'WARNING: backlight was already zero at startup; exit will restore zero.' >&2
     fi
     if printf '%s\n' "$target" >"$BRIGHTNESS_FILE"; then
-      echo "Set backlight to $percent% ($target of $maximum)."
+      echo "Set backlight to configured $percent% ($target of $maximum)."
     else
       echo 'WARNING: could not set backlight brightness.' >&2
     fi

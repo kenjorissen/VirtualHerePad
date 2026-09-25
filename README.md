@@ -111,23 +111,51 @@ A hung USB server gets up to three additional seconds before being killed.
 
 ### Screen brightness
 
-The default is **5%**. To change it:
+The default is **10%** on a nonlinear brightness scale. To change it:
 
 ```bash
 sudoedit /home/.vhp/data/brightness-percent
 ```
 
 Put a single whole number from **0 to 100** in the file, without a `%` sign, then
-stop and relaunch VHP. `0` requests the hardware minimum, which may still be
-visible; `100` requests maximum brightness. Setup creates the file only if it
-is missing and never overwrites an existing preference.
+stop and relaunch VHP. Setup creates the file only if it is missing and never
+overwrites an existing preference. **Upgrading preserves an existing `5`; change
+it to `10` if you want the new default.** Existing numbers now use the nonlinear
+mapping, rather than the old raw hardware percentage.
 
-VHP reads `max_brightness` and sets `round(max_brightness × percent / 100)` once
-at startup. For example, 5% of 599000 is 29950. This is a percentage of the
-hardware scale, not a perceptual-brightness or nits calibration. It does not
-continually fight Steam's adaptive brightness control.
+VHP selects a curve using the DMI product name and `max_brightness`:
 
-Missing or invalid preferences log a warning and fall back to 5%. Parsing is
+- **Steam Deck OLED (`Galileo`), maximum `599000`:** measured step/percentage
+  anchors, with exponential interpolation between adjacent points. **10% sets
+  3405.** This is an empirical approximation from one Deck, not Steam's official
+  algorithm or a guarantee for every OLED panel/firmware combination.
+- **LCD and other models/ranges (including unavailable model identification):**
+  generic perceptual approximation `round(max_brightness × (percent / 100)^2.2)`.
+  This is not a measured Steam-slider or nits calibration.
+
+| OLED step / percentage | Hardware brightness |
+| --- | ---: |
+| 0 | 1207 |
+| 10 | 3405 |
+| 20 | 9604 |
+| 30 | 27086 |
+| 40 | 76387 |
+| 50 | 215423 |
+| 60 | 279370 |
+| 70 | 362298 |
+| 80 | 469843 |
+| 90 | 593677 |
+| 100 | 593677 |
+
+On the calibrated OLED, `0` means the measured minimum and 90–100 shares the
+measured upper plateau, slightly below the hardware maximum. On the generic
+curve, `0` writes hardware zero (the screen may go dark) and `100` writes the
+hardware maximum. Small values can also round to zero on coarse hardware ranges.
+
+Brightness is set **once at startup**, and the selected mapping is logged.
+VHP does not continually fight Steam's adaptive brightness control.
+
+Missing or invalid preferences log a warning and fall back to 10%. Parsing is
 bounded to six bytes, rejects excess/binary data and non-regular files, and never
 executes the contents. A trailing LF or CRLF is accepted.
 

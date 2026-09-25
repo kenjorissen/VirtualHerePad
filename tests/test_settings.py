@@ -32,7 +32,7 @@ class SettingsTests(unittest.TestCase):
                 self.assertEqual((folder / name).stat().st_mode & 0o777, mode)
             self.assertFalse((folder / "base/data/config.ini").exists())
             preference = folder / "base/data/brightness-percent"
-            self.assertEqual(preference.read_text(), "5\n")
+            self.assertEqual(preference.read_text(), "10\n")
             self.assertEqual(preference.stat().st_mode & 0o777, 0o600)
 
     def test_reinstall_preserves_brightness_preference(self):
@@ -40,7 +40,7 @@ class SettingsTests(unittest.TestCase):
             folder = Path(temporary)
             self.assertEqual(self.run_setup(folder).returncode, 0)
             preference = folder / "base/data/brightness-percent"
-            for content in ("0\n", "33\n", "invalid-but-user-owned-content\n"):
+            for content in ("0\n", "5\n", "33\n", "invalid-but-user-owned-content\n"):
                 preference.write_text(content)
                 result = self.run_setup(folder)
                 self.assertEqual(result.returncode, 0, result.stderr)
