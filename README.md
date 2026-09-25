@@ -143,7 +143,7 @@ A hung USB server gets up to three additional seconds before being killed.
 
 ### Screen brightness
 
-The default is **10%** on a nonlinear brightness scale. To change it:
+The default is **1%** on a nonlinear brightness scale. To change it:
 
 ```bash
 sudoedit /home/.vhp/data/brightness-percent
@@ -151,8 +151,7 @@ sudoedit /home/.vhp/data/brightness-percent
 
 Put a single whole number from **0 to 100** in the file, without a `%` sign, then
 stop and relaunch VHP. Setup creates the file only if it is missing and never
-overwrites an existing preference. Existing numbers now use the nonlinear
-mapping, rather than the old raw hardware percentage.
+overwrites an existing preference.
 
 VHP selects a curve using the DMI product name and `max_brightness`:
 
@@ -186,7 +185,7 @@ hardware maximum. Small values can also round to zero on coarse hardware ranges.
 Brightness is set **once at startup**, and the selected mapping is logged.
 VHP does not continually fight Steam's adaptive brightness control.
 
-Missing or invalid preferences log a warning and fall back to 10%. Parsing is
+Missing or invalid preferences log a warning and fall back to 1%. Parsing is
 bounded to six bytes, rejects excess/binary data and non-regular files, and never
 executes the contents. A trailing LF or CRLF is accepted.
 

@@ -32,7 +32,7 @@ class SettingsTests(unittest.TestCase):
                 self.assertEqual((folder / name).stat().st_mode & 0o777, mode)
             self.assertFalse((folder / "base/data/config.ini").exists())
             preference = folder / "base/data/brightness-percent"
-            self.assertEqual(preference.read_text(), "10\n")
+            self.assertEqual(preference.read_text(), "1\n")
             self.assertEqual(preference.stat().st_mode & 0o777, 0o600)
 
     def test_reinstall_preserves_brightness_preference(self):

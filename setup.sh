@@ -129,7 +129,7 @@ install -d -o root -g root -m 755 "$base" "$base/bin"
 install -d -o root -g root -m 700 "$data"
 # User preference: create once, never overwrite on setup/update.
 if [[ ! -e "$data/brightness-percent" ]]; then
-  printf '10\n' > "$data/brightness-percent"
+  printf '1\n' > "$data/brightness-percent"
   chmod 600 "$data/brightness-percent"
 fi
 for previous in "$base/config.ini" /var/lib/vhp/config.ini; do
@@ -216,7 +216,7 @@ if [[ $shortcut_status == ready* ]]; then
 else
   echo 'Before deleting the checkout, update any old Steam shortcut to use the installed launcher.'
 fi
-echo 'Display: defaults to 10%; edit /home/.vhp/data/brightness-percent (0-100) with sudo.'
+echo 'Display: defaults to 1%; edit /home/.vhp/data/brightness-percent (0-100) with sudo.'
 echo 'Galileo OLED with max 599000 uses measured steps; other models/ranges use generic gamma 2.2.'
 echo 'Existing brightness preferences are preserved. VHP does not fight Steam adaptive brightness.'
 echo 'If the screen relights, check Steam > Settings > Display > Enable Adaptive Brightness.'

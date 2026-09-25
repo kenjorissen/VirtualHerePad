@@ -39,7 +39,7 @@ DMI_PRODUCT_FILE=/sys/class/dmi/id/product_name
 brightness=''
 
 # BEGIN BRIGHTNESS_FUNCTIONS
-# This file is data, never sourced/executed. Invalid/missing preferences use 10%.
+# This file is data, never sourced/executed. Invalid/missing preferences use 1%.
 read_brightness_percent() {
   # Six bytes are enough to validate 100 + CRLF and detect excess data.
   # NONBLOCK and NOFOLLOW avoid hanging on a FIFO or following a symlink.
@@ -49,7 +49,7 @@ import re
 import stat
 import sys
 
-percent = 10
+percent = 1
 try:
     fd = os.open(sys.argv[1], os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
     try:
@@ -62,7 +62,7 @@ try:
         raise ValueError("expected an integer from 0 to 100")
     percent = int(data)
 except (OSError, ValueError):
-    print("Brightness preference missing/invalid; using 10% (expected integer 0-100).", file=sys.stderr)
+    print("Brightness preference missing/invalid; using 1% (expected integer 0-100).", file=sys.stderr)
 print(percent)
 VHP_PERCENT
 }

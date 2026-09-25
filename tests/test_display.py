@@ -129,8 +129,8 @@ class BrightnessTests(unittest.TestCase):
         for value in (None, "", "101", "-1", "5%", "5.5", "5\n6", "$(exit 77)", "9999999999999999"):
             with self.subTest(value=value):
                 actual, result = self.apply(value)
-                self.assertEqual(actual, "3405")
-                self.assertIn("using 10%", result.stderr)
+                self.assertEqual(actual, "1339")
+                self.assertIn("using 1%", result.stderr)
 
     def read_preference(self, path):
         def limit_memory():
@@ -154,13 +154,13 @@ class BrightnessTests(unittest.TestCase):
                 stream.truncate(1024**3)  # Sparse: do not allocate a gigabyte of data.
             result = self.read_preference(path)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stdout, "10\n")
+            self.assertEqual(result.stdout, "1\n")
             self.assertIn("missing/invalid", result.stderr)
 
     def test_binary_junk_and_extra_lines_are_rejected_but_crlf_is_valid(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "percent"
-            for data, expected in ((b"25\x00", "10\n"), (b"25\n\n", "10\n"), (b"25\r\n", "25\n")):
+            for data, expected in ((b"25\x00", "1\n"), (b"25\n\n", "1\n"), (b"25\r\n", "25\n")):
                 with self.subTest(data=data):
                     path.write_bytes(data)
                     result = self.read_preference(path)
@@ -180,7 +180,7 @@ class BrightnessTests(unittest.TestCase):
                 with self.subTest(path=path):
                     result = self.read_preference(path)
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertEqual(result.stdout, "10\n")
+                    self.assertEqual(result.stdout, "1\n")
                     self.assertIn("missing/invalid", result.stderr)
 
     def test_bad_maximum_or_original_leaves_backlight_unchanged(self):

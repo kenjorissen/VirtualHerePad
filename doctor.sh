@@ -83,7 +83,7 @@ systemctl --no-pager status vhp.service || true
 systemctl show vhp.service -p LoadState -p ActiveState -p SubState -p Result
 
 section 'Backlight and sleep'
-echo 'Brightness preference: /home/.vhp/data/brightness-percent (integer 0-100, default 10).'
+echo 'Brightness preference: /home/.vhp/data/brightness-percent (integer 0-100, default 1).'
 echo 'Galileo + max 599000 uses measured OLED steps; other models/ranges use generic gamma 2.2.'
 if [[ -r /sys/class/dmi/id/product_name ]]; then
   printf 'Device model: '
