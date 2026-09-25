@@ -84,7 +84,11 @@ If the server doesn't appear, see [Connection troubleshooting](#connection-troub
 The colored terminal dashboard shows a block-letter **VirtualHerePad** title,
 large battery percentage (green, amber at 30%, red at 15%), charging status,
 local clock, primary local IP, connected client IPs, and corner-exit markers.
-Small terminals get a clipped compact layout; non-terminal launches use plain text.
+The large clock sits on the left with battery on the right; server/client status
+is below them, above the IP details. The title, clock, and battery scale together:
+8-row lettering at 90×30 or larger, 10-row lettering at 120×34 or larger, and
+5-row lettering in smaller full layouts. Small terminals get a clipped compact
+layout; non-terminal launches use plain text.
 
 - The clock shows local hours/minutes, without seconds or animations.
 - Battery data is sampled every **30 seconds** from the system battery.

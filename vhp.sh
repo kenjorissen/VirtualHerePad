@@ -99,11 +99,32 @@ text_at() {
   printf '\033[%s;%sH%s' "$row" "$column" "${text:0:cols-column+1}"
 }
 
+# Uses the glyph table local to paint_dashboard (Bash dynamic scope).
+draw_block() {
+  local text=$1 top=$2 left=$3 numerator=$4 denominator=$5
+  local row char x source_row line scaled height=$(((5 * numerator + denominator - 1) / denominator))
+  local -a cells
+  for ((row = 0; row < height; row++)); do
+    source_row=$((row * denominator / numerator))
+    line=''
+    for ((char = 0; char < ${#text}; char++)); do
+      IFS='|' read -r -a cells <<<"${glyph[${text:char:1}]}"
+      line+="${cells[source_row]} "
+    done
+    line=${line% }
+    scaled=''
+    for ((x = 0; x < (${#line} * numerator + denominator - 1) / denominator; x++)); do
+      scaled+=${line:x*denominator/numerator:1}
+    done
+    text_at "$((top + row))" "$left" "$scaled"
+  done
+}
+
 paint_dashboard() {
-  local left top row char line title='VIRTUALHEREPAD' battery_color=37 connection_color=33
+  local left top title='VIRTUALHEREPAD' battery_color=37 connection_color=33
+  local numerator=1 denominator=1 height=5 width=64 clock_width=27 title_width=55 battery_left
   local key="$battery_percent|$battery_status|$clock_time|$local_ip|$client_ips|$client_status|$rows|$cols"
   if [[ $key == "$last_display" && $ui_dirty == false ]]; then return 0; fi
-  local -a cells
   local -A glyph=(
     [0]=' ### |#   #|#   #|#   #| ### '
     [1]='  #  | ##  |  #  |  #  | ### '
@@ -115,6 +136,7 @@ paint_dashboard() {
     [7]='#####|    #|   # |  #  | #   '
     [8]=' ### |#   #| ### |#   #| ### '
     [9]=' ### |#   #| ####|    #| ### '
+    [':']='   | # |   | # |   '
     ['%']='##  #|## # |  #  | # ##|#  ##'
     ['-']='     |     |#####|     |     '
     [A]=' # |# #|###|# #|# #'
@@ -161,50 +183,46 @@ paint_dashboard() {
     text_at 9 1 'Local keyboard: Ctrl+C'
     return 0
   fi
-  left=$(((cols - 64) / 2 + 1))
-  top=$(((rows - 24) / 2 + 1))
+  if ((cols >= 120 && rows >= 34)); then
+    numerator=2
+  elif ((cols >= 90 && rows >= 30)); then
+    numerator=3
+    denominator=2
+  fi
+  height=$(((5 * numerator + denominator - 1) / denominator))
+  title_width=$(((55 * numerator + denominator - 1) / denominator))
+  clock_width=$(((27 * numerator + denominator - 1) / denominator))
+  width=$((clock_width + 8 + (23 * numerator + denominator - 1) / denominator))
+  if ((width < title_width)); then width=$title_width; fi
+  left=$(((cols - width) / 2 + 1))
+  top=$(((rows - (2 * height + 13)) / 2 + 1))
+  battery_left=$((left + clock_width + 8))
   printf '\033[36m'
   text_at 1 1 '+ HOLD 2s'
   text_at 1 "$((cols - 8))" 'HOLD 2s +'
   text_at "$rows" 1 '+ HOLD 2s'
   text_at "$rows" "$((cols - 8))" 'HOLD 2s +'
   printf '\033[1m'
-  for ((row = 0; row < 5; row++)); do
-    line=''
-    for ((char = 0; char < ${#title}; char++)); do
-      IFS='|' read -r -a cells <<<"${glyph[${title:char:1}]}"
-      line+="${cells[row]} "
-    done
-    text_at "$((top + 2 + row))" "$((left + 4))" "$line"
-  done
+  draw_block "$title" "$((top + 1))" "$((left + (width - title_width) / 2))" "$numerator" "$denominator"
   printf '\033[0;37;40m'
-  text_at "$((top + 8))" "$left" 'BATTERY'
-  printf '\033[1;%sm' "$battery_color"
-  for ((row = 0; row < 5; row++)); do
-    line=''
-    for ((char = 0; char < ${#battery_percent}; char++)); do
-      IFS='|' read -r -a cells <<<"${glyph[${battery_percent:char:1}]}"
-      line+="${cells[row]}  "
-    done
-    IFS='|' read -r -a cells <<<"${glyph['%']}"
-    text_at "$((top + 10 + row))" "$left" "$line${cells[row]}"
-  done
-  printf '\033[0;37;40m'
-  text_at "$((top + 16))" "$left" "$battery_status"
-  printf '\033[1;32m'
-  text_at "$((top + 8))" "$((left + 32))" 'SERVER RUNNING'
-  printf '\033[0;%s;40m' "$connection_color"
-  text_at "$((top + 10))" "$((left + 32))" "$client_status"
-  printf '\033[0;37;40m'
-  text_at "$((top + 12))" "$((left + 32))" 'LOCAL TIME'
+  text_at "$((top + height + 2))" "$left" 'LOCAL TIME'
+  text_at "$((top + height + 2))" "$battery_left" 'BATTERY'
   printf '\033[1;35m'
-  text_at "$((top + 13))" "$((left + 32))" "$clock_time"
-  printf '\033[0;36;40m'
-  text_at "$((top + 17))" "$left" "Local IP: $local_ip"
-  text_at "$((top + 18))" "$left" "Clients: $client_ips"
+  draw_block "$clock_time" "$((top + height + 4))" "$left" "$numerator" "$denominator"
+  printf '\033[1;%sm' "$battery_color"
+  draw_block "$battery_percent%" "$((top + height + 4))" "$battery_left" "$numerator" "$denominator"
   printf '\033[0;37;40m'
-  text_at "$((top + 20))" "$left" 'Hold one finger in any corner for 2 seconds to exit.'
-  text_at "$((top + 21))" "$left" 'Local keyboard: Ctrl+C | TCP link only; device use not checked'
+  text_at "$((top + 2 * height + 4))" "$battery_left" "$battery_status"
+  printf '\033[1;32m'
+  text_at "$((top + 2 * height + 6))" "$left" 'SERVER RUNNING'
+  printf '\033[0;%s;40m' "$connection_color"
+  text_at "$((top + 2 * height + 6))" "$((left + 18))" "$client_status"
+  printf '\033[0;36;40m'
+  text_at "$((top + 2 * height + 8))" "$left" "Local IP: $local_ip"
+  text_at "$((top + 2 * height + 9))" "$left" "Clients: $client_ips"
+  printf '\033[0;37;40m'
+  text_at "$((top + 2 * height + 11))" "$left" 'Hold one finger in any corner for 2 seconds to exit.'
+  text_at "$((top + 2 * height + 12))" "$left" 'Local keyboard: Ctrl+C | TCP link only; device use not checked'
 }
 
 resize_dashboard() {

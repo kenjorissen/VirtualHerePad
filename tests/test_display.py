@@ -1,6 +1,7 @@
 import fcntl
 import os
 import pty
+import re
 import resource
 import select
 import shlex
@@ -254,6 +255,41 @@ class DashboardTests(unittest.TestCase):
         self.assertIn("#", text)
         text = self.run_dashboard(supplies, "ui_active=true; rows=10; cols=40; paint_dashboard")
         self.assertIn("Battery: 100% (Full)", text)
+
+    def test_scaled_layout_places_clock_left_battery_right_and_status_below(self):
+        supplies = {"BAT0": {"type": "Battery", "capacity": "100", "status": "Full"}}
+        for cols, rows, height, title_width in (
+            (80, 24, 5, 55),
+            (90, 30, 8, 83),
+            (128, 40, 10, 110),
+        ):
+            with self.subTest(cols=cols, rows=rows):
+                text = self.run_dashboard(
+                    supplies, f"ui_active=true; cols={cols}; rows={rows}; paint_dashboard"
+                )
+                writes = [
+                    (int(r), int(c), value)
+                    for r, c, value in re.findall(r"\x1b\[(\d+);(\d+)H([^\x1b]*)", text)
+                ]
+                labels = {value: (r, c) for r, c, value in writes}
+                clock = labels["LOCAL TIME"]
+                battery = labels["BATTERY"]
+                self.assertEqual(clock[0], battery[0])
+                self.assertLess(clock[1], battery[1])
+                blocks = [(r, c, value) for r, c, value in writes if "#" in value]
+                self.assertEqual(len(blocks), 3 * height)
+                self.assertTrue(all(len(value) == title_width for _, _, value in blocks[:height]))
+                self.assertEqual(len({r for r, _, _ in blocks[:height]}), height)
+                self.assertTrue(all(c == clock[1] for _, c, _ in blocks[height : 2 * height]))
+                self.assertTrue(all(c == battery[1] for _, c, _ in blocks[2 * height :]))
+                self.assertGreater(labels["SERVER RUNNING"][0], max(r for r, _, _ in blocks))
+                self.assertGreater(labels["Local IP: Unavailable"][0], labels["SERVER RUNNING"][0])
+                self.assertTrue(
+                    all(
+                        1 <= r <= rows and 1 <= c and c + len(value) - 1 <= cols
+                        for r, c, value in writes
+                    )
+                )
 
     def test_network_clients_are_deduplicated_sorted_and_numeric(self):
         text = self.run_dashboard(
