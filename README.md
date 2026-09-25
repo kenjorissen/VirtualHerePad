@@ -6,6 +6,50 @@ VirtualHerePad (VHP) starts the server, dims the Deck's screen, and prevents nor
 sleep while sharing. Hold a screen corner to stop and restore brightness.
 VirtualHere's own licensing terms apply.
 
+## What is VirtualHere?
+
+[VirtualHere](https://www.virtualhere.com/) shares **USB devices over a network**.
+The receiving computer sees a shared device as though it were plugged into a
+local USB port. This is controller sharing, not game/video streaming: your game
+runs on the receiving computer, while the Deck supplies its controller input.
+
+There are two parts:
+
+- **Server — on the Steam Deck.** VirtualHerePad downloads and runs VirtualHere's
+  USB server, then handles the Steam shortcut, screen dimming, and local exit
+  gesture. You don't need to install the server yourself.
+- **Client — on your gaming PC.** Install/run VirtualHere's USB client to connect
+  to the Deck's controller. VirtualHerePad does not install this on the PC.
+
+VirtualHere is separate, proprietary software—not part of VirtualHerePad's MIT
+license. See its [official website](https://www.virtualhere.com/) for licensing,
+trial limitations, pricing, and support. Existing server config/license files
+can be [imported into VirtualHerePad](#config-and-license).
+
+### Windows client quick start
+
+1. On your Windows PC, open the official
+   [VirtualHere USB Client download page](https://www.virtualhere.com/usb_client_software).
+   Download **Windows x86_64** for a typical Intel/AMD PC, or **Windows ARM64**
+   for an ARM-based Windows PC. Save and run the downloaded executable; follow
+   any Windows permission or driver-installation prompts. Installing it as a
+   Windows service is optional, not needed for this quick start.
+2. Put the PC and Deck on the same trusted local network. Complete the Deck
+   setup below and launch **VirtualHerePad** from Steam.
+3. The client should discover the Deck's server and list its USB devices in a
+   tree. Right-click the **Steam Controller** device (its label may include
+   **Valve Software**) and select **Use**. Don't share the touchscreen—you need
+   it locally for the corner-hold exit gesture.
+4. Windows now sees the controller as a local USB device. Use Steam/Steam Input
+   on the PC to configure it for your game as needed. When finished, stop using
+   the device in the client or stop VHP with the Deck's corner-hold gesture.
+
+If the Deck isn't discovered, check that VHP is running, both machines can reach
+each other, and the network isn't a guest network with client isolation. Check
+firewall rules too; the server uses TCP port **7575** by default. Don't expose
+that port to the public internet. The client also supports manually specifying
+a server address; see VirtualHere's client documentation for details.
+
 ## Quick start
 
 All prerequisites are included on a stock Steam Deck. **No extra pacman or pip
@@ -38,8 +82,9 @@ the VirtualHere server for you.
    **Don't look only at Home / Recently Played:** a newly added shortcut may
    not appear there until it has actually been launched. In Desktop Mode, use
    Library search for `VirtualHerePad` with filters that include non-Steam games.
-6. **Connect from the other machine.** Install/open the VirtualHere client there
-   and select the Deck's controller. Leave the Deck's launcher running.
+6. **Connect from the other machine.** Follow the [Windows client quick start](#windows-client-quick-start)
+   above (clients are also available for macOS and Linux). Select **Use** on the
+   Deck's controller and leave the Deck's launcher running.
 7. **Stop when finished.** Hold **one finger in any screen corner for two
    seconds**. VHP stops sharing and restores brightness. A local Bluetooth
    keyboard and **Ctrl+C** are the fallback; the Deck's Steam button may be
