@@ -247,28 +247,45 @@ Repository scripts and documentation are MIT licensed; see [LICENSE](LICENSE).
 The separately downloaded VirtualHere binary is proprietary and is **not**
 covered by that license.
 
-## Development checks
+## Development
 
-On a development machine, use Ruff for Python and shfmt/ShellCheck for Bash.
-These are development tools only, not extra Steam Deck runtime dependencies.
-With [uv](https://docs.astral.sh/uv/) available, run the formatters via its tool cache:
+There is no build step. On a Linux development machine, have **Python 3, Bash,
+GNU make, ShellCheck, and [uv](https://docs.astral.sh/uv/)** available. `uvx`
+(included with uv) downloads Ruff and shfmt into its tool cache on first use;
+no project virtual environment is required. These tools are **development-only**:
+Deck users still just run `setup.sh`, not these commands.
 
-```bash
-uvx ruff check --fix .
-uvx ruff format .
-uvx --from shfmt-py shfmt -i 2 -ci -w ./*.sh ./vhp-root
-```
-
-Verify without modifying files:
+Run from the checkout:
 
 ```bash
-uvx ruff check .
-uvx ruff format --check .
-uvx --from shfmt-py shfmt -i 2 -ci -d ./*.sh ./vhp-root
-shellcheck ./*.sh ./vhp-root
-python3 -m unittest discover -s tests -v
+make fmt    # Fix Python lint/import issues and format Python + shell files
+make lint   # Check Ruff, formatting, ShellCheck, and Bash syntax; no source edits
+make test   # Run the Python unittest suite
+make check  # Run lint + tests (also the default for plain make)
 ```
 
-Tests use temporary files and mock services, not USB devices or root access.
-For hardware changes, test launch, client connection, corner-hold exit, and forced
-launcher termination on the Deck; confirm brightness and sleep return.
+Ruff settings live in `ruff.toml`. Shell formatting uses shfmt with two-space
+indentation and indented case branches. `.github/workflows/check.yml` runs the
+same `make check` on pushes, pull requests, and manual workflow dispatches.
+CI currently uses Python 3.11; tools can be overridden locally, for example
+`make check PYTHON=python3.13` or `make lint SHELLCHECK=/path/to/shellcheck`.
+
+### Tool versions
+
+The Makefile pins **Ruff** and the **shfmt-py** distribution (which supplies the
+shfmt binary) to exact versions. Formatter releases can change output, so this
+keeps local formatting consistent with CI. To upgrade, change the version in
+the Makefile, run `make fmt` followed by `make check`, and review the diff.
+
+Python, make, and ShellCheck are not exact-version pinned; CI uses its selected
+Python minor version and the runner's packaged shell tools. This is a practical
+development baseline, not a fully reproducible toolchain. If ShellCheck version
+differences become a problem, it can be pinned too. None of these development
+pins controls the separately downloaded VirtualHere server.
+
+Tests use temporary files and mock services, not USB devices or root access;
+they do not install or start VHP. Shortcut tests simulate a terminal and reject
+unmocked input requests or process launches, so they cannot prompt or start Steam.
+Test stdout/stderr is buffered and shown on failures. For hardware changes, test launch, client
+connection, corner-hold exit, and forced launcher termination on the Deck;
+confirm brightness and sleep return.

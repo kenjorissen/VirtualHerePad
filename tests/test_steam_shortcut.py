@@ -23,6 +23,40 @@ def fields(entry):
 
 
 class ShortcutTests(unittest.TestCase):
+    def setUp(self):
+        # Exercise a terminal-like environment even in CI. Missing prompt/process
+        # mocks must fail immediately, never block for input or launch real Steam.
+        guards = (
+            patch.object(shortcut.sys.stdin, "isatty", return_value=True),
+            patch(
+                "builtins.input",
+                side_effect=AssertionError(
+                    "Unexpected interactive input: mock the prompt in this test"
+                ),
+            ),
+            patch.object(
+                shortcut.subprocess,
+                "run",
+                side_effect=AssertionError("Unexpected subprocess.run: mock it in this test"),
+            ),
+            patch.object(
+                shortcut.subprocess,
+                "Popen",
+                side_effect=AssertionError("Unexpected subprocess.Popen: mock it in this test"),
+            ),
+        )
+        for guard in guards:
+            guard.start()
+            self.addCleanup(guard.stop)
+
+    def test_unmocked_input_and_process_launch_fail_fast(self):
+        with self.assertRaisesRegex(AssertionError, "Unexpected interactive input"):
+            input("This must never reach a real terminal")
+        with self.assertRaisesRegex(AssertionError, "Unexpected subprocess.run"):
+            shortcut.subprocess.run(["steam", "-shutdown"])
+        with self.assertRaisesRegex(AssertionError, "Unexpected subprocess.Popen"):
+            shortcut.subprocess.Popen(["steam"])
+
     def test_new_and_idempotent(self):
         path = Path("/home/deck/my vhp")
         data = shortcut.update(b"", path)
@@ -303,6 +337,7 @@ class ShortcutTests(unittest.TestCase):
                 patch.object(shortcut.Path, "home", return_value=home),
                 patch.object(shortcut.os, "geteuid", return_value=1000),
                 patch.object(shortcut, "steam_running", return_value=False),
+                patch.object(shortcut, "offer_start_steam") as offer_start,
             ):
                 with patch("sys.argv", ["steam-shortcut.py"]), self.assertRaises(SystemExit):
                     shortcut.main()
@@ -311,6 +346,7 @@ class ShortcutTests(unittest.TestCase):
                     shortcut.main()
                 self.assertTrue((userdata / "456/config/shortcuts.vdf").exists())
                 self.assertFalse((userdata / "123/config/shortcuts.vdf").exists())
+                offer_start.assert_called_once()
 
 
 if __name__ == "__main__":
