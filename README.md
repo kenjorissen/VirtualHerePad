@@ -29,14 +29,18 @@ the VirtualHere server for you.
    the offer to reopen Steam afterward, or open it yourself. If you already
    have a VirtualHere config/license, [import it](#config-and-license) before
    your first launch.
-4. **Find it explicitly.** Return to **Gaming Mode**, open **Library**, select
+4. **Disable adaptive brightness.** In **Gaming Mode**, open **Steam > Settings >
+   Display** and turn off **Enable Adaptive Brightness**. This prevents Steam's
+   dynamic brightness control from relighting the screen while VHP runs. Setup
+   does not change this setting; you can re-enable it after sharing.
+5. **Find it explicitly.** In **Gaming Mode**, open **Library**, select
    the **Non-Steam** tab, then open **VirtualHerePad** and select **Play**.
    **Don't look only at Home / Recently Played:** a newly added shortcut may
    not appear there until it has actually been launched. In Desktop Mode, use
    Library search for `VirtualHerePad` with filters that include non-Steam games.
-5. **Connect from the other machine.** Install/open the VirtualHere client there
+6. **Connect from the other machine.** Install/open the VirtualHere client there
    and select the Deck's controller. Leave the Deck's launcher running.
-6. **Stop when finished.** Hold **one finger in any screen corner for two
+7. **Stop when finished.** Hold **one finger in any screen corner for two
    seconds**. VHP stops sharing and restores brightness. A local Bluetooth
    keyboard and **Ctrl+C** are the fallback; the Deck's Steam button may be
    forwarded to the client rather than opening the local menu.
