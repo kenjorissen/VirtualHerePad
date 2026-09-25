@@ -204,6 +204,7 @@ class QmlTests(QtTestCase):
         self.assertNotIn("setContextProperty", (ROOT / "vhp_ui.py").read_text())
 
 
+@unittest.skipUnless(HAVE_QT, "PySide6 is not installed")
 class PlatformTests(unittest.TestCase):
     def test_wayland_is_preferred_when_nothing_was_requested(self):
         environment = {"WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0"}
