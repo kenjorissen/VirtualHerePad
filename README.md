@@ -1,26 +1,34 @@
-# VHP — VirtualHere Pad
+# VirtualHerePad
 
 Use a Steam Deck as a controller for another machine through the proprietary
 [VirtualHere USB server](https://www.virtualhere.com/usb_server_software).
-VHP launches the server, turns down the Deck's backlight, and inhibits normal
+VirtualHerePad (VHP) launches the server, turns down the Deck's backlight, and inhibits normal
 system sleep until you exit. Install the VirtualHere client on the other machine
 and select the Deck's controller there. VirtualHere's own licensing terms apply.
 
-## Install / update
+## Install
 
-On the Deck, clone this repository anywhere, then run as your normal user:
+On the Deck, log into Steam once, switch to **Desktop Mode**, and open Konsole.
+Run as your normal user (not root). If you haven't set a sudo password yet, run
+`passwd` first.
 
 ```bash
-git pull
+cd ~
+git clone https://github.com/kenjorissen/VirtualHerePad.git
+cd VirtualHerePad
 ./setup.sh
-./vhp.sh
 ```
 
-The initial clone has no need for `git pull`. Setup asks for your sudo password
-and downloads the current x86-64 server directly from VirtualHere over HTTPS.
-Set a password with `passwd` first if your Deck doesn't have one.
-Dependencies: Bash, Python 3, curl, sudo, systemd, Konsole, and standard GNU
-utilities. No pip packages or additional graphical toolkits are needed.
+Accept the offer to add the **VirtualHerePad** Steam shortcut. After setup,
+launch **VirtualHerePad** from Steam's Library (the **Non-Steam** tab in Gaming
+Mode). You do not need to run `vhp.sh` yourself for normal use.
+
+Setup asks for your sudo password and downloads the current x86-64 VirtualHere
+server directly from its publisher over HTTPS. All prerequisites—Git, Bash,
+Python 3, curl, sudo, systemd, Konsole, and the standard GNU utilities—are already
+included on a stock Steam Deck. **No extra package installation, pacman, pip,
+or virtual environment is necessary.**
+
 Before downloading, setup checks required tools, sudo access, writable install
 paths, and Steam account discovery. Missing/ambiguous Steam accounts produce
 warnings rather than blocking installation without a shortcut.
@@ -30,11 +38,21 @@ shortcut status separately and tells you what to do next.
 Setup leaves SteamOS's read-only system partition protected: binaries go under
 `/home/.vhp/bin`, settings under `/home/.vhp/data`, and only the systemd unit and
 sudo rule go into `/etc` (normally writable through SteamOS's overlay). No
-`steamos-readonly disable` is needed on the expected stock layout. This still
-needs hardware verification; setup will report errors on unsupported layouts.
+`steamos-readonly disable` is needed on the expected stock layout. This has been
+tested on a Steam Deck; setup will report errors on unsupported layouts.
 
 Normal SteamOS updates should preserve `/home` data and binaries. If an update
 resets the `/etc` service or sudo rule, rerun setup to restore integration.
+
+## Update
+
+From your checkout (normally `~/VirtualHerePad`):
+
+```bash
+cd ~/VirtualHerePad
+git pull
+./setup.sh
+```
 
 Setup is safe to rerun: it stops the current service, replaces installed code,
 and keeps settings/license data in `/home/.vhp/data`. It does not start a service at
@@ -49,7 +67,7 @@ verified release checksum. The downloaded binary is not stored in Git.
 
 ## Steam
 
-Run setup from **Desktop Mode**. It offers to add or update a **VHP** non-Steam
+Run setup from **Desktop Mode**. It offers to add or update a **VirtualHerePad** non-Steam
 shortcut. If Steam is running, the helper asks permission to close it with
 `steam -shutdown`. Save games and finish downloads before accepting. It waits
 up to 30 seconds after the shutdown command completes, never force-kills Steam,
@@ -72,20 +90,32 @@ python3 steam-shortcut.py --account 12345678
 ```
 
 The helper backs up `shortcuts.vdf` beside the original before changing it,
-preserves unrelated shortcuts, and updates an existing VHP/vhp.sh shortcut
-instead of duplicating it. Existing app IDs and other settings are preserved.
+preserves unrelated shortcuts, and updates an existing VirtualHerePad, VHP, or
+vhp.sh shortcut instead of duplicating it. Older VHP entries are renamed to
+VirtualHerePad. Existing app IDs and other settings are preserved.
 It refuses to write while Steam is running or if the file format is unsupported.
 Leave Steam closed until it finishes. Noninteractive setup skips the prompt.
 
 The generated shortcut uses your checkout's actual path:
 
 - **Target:** `"/usr/bin/env"`
-- **Start In:** `"/home/deck/vhp"` (or wherever you cloned it)
-- **Launch Options:** `-u LD_PRELOAD konsole --fullscreen -e "/home/deck/vhp/vhp.sh"`
+- **Name:** `VirtualHerePad`
+- **Start In:** `"/home/deck/VirtualHerePad"` (or wherever you cloned it)
+- **Launch Options:** `-u LD_PRELOAD konsole --fullscreen -e "/home/deck/VirtualHerePad/vhp.sh"`
 - **Enable Steam Overlay:** on
 
-You can keep your existing shortcut or configure those fields manually instead.
-Keep the launcher open. To stop, **hold one finger in any screen corner for two
+`vhp.sh` is the launcher script used by this shortcut. For troubleshooting, you
+can run `./vhp.sh` manually from your checkout in Konsole to see its output; this
+starts the same service and dims the screen. It is not an extra installation step.
+
+No specific checkout directory name is required; paths with spaces are supported.
+Setup resolves its own location, and the shortcut helper uses that actual
+path—not an assumed username or folder name. Existing `~/vhp` clones still work. After moving or
+renaming a checkout, rerun `python3 /new/path/steam-shortcut.py` (or setup) to update
+the shortcut. Installed privileged code/data stay at fixed, root-owned paths
+under `/home/.vhp`, independently of the checkout name.
+
+You can configure the shortcut fields manually instead. Keep the launcher open. To stop, **hold one finger in any screen corner for two
 seconds** (within the outer 12% of both touchscreen axes). Releasing, moving out
 of the corner, or adding another finger cancels the hold. After multiple fingers,
 lift all fingers before trying again. All four corners work regardless of panel
@@ -96,7 +126,8 @@ capabilities, not an event number or device name. It reads input non-exclusively
 (no input grab), logs no coordinates, and requires the touchscreen to remain
 local rather than forwarded through VirtualHere. Other local apps can still
 receive the touches. A finger already down when monitoring starts must lift
-before arming. Touch exit is unverified on hardware; use the fallback if needed.
+before arming. Corner-hold exit and brightness restoration have been tested on
+a Steam Deck; keep the keyboard fallback available when testing other hardware.
 
 The monitor blocks on input while idle—no periodic polling of a connected idle
 touchscreen. Only a potential hold schedules a timer. If the device is absent,

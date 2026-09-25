@@ -4,6 +4,7 @@ import struct
 import subprocess
 import tempfile
 import unittest
+import zlib
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('shortcut', Path(__file__).resolve().parents[1] / 'steam-shortcut.py')
@@ -26,6 +27,8 @@ class ShortcutTests(unittest.TestCase):
         self.assertEqual(shortcut.update(data, path), data)
         self.assertEqual(len(entries(data)), 1)
         values = fields(entries(data)[0])
+        self.assertEqual(values[b'appname'], b'VirtualHerePad')
+        self.assertEqual(values[b'appid'], struct.pack('<I', zlib.crc32(b'"/usr/bin/env"VirtualHerePad') | 0x80000000))
         self.assertEqual(values[b'exe'], b'"/usr/bin/env"')
         self.assertEqual(values[b'LaunchOptions'], b'-u LD_PRELOAD konsole --fullscreen -e "/home/deck/my vhp/vhp.sh"')
         self.assertEqual(values[b'AllowOverlay'], struct.pack('<I', 1))
@@ -43,9 +46,40 @@ class ShortcutTests(unittest.TestCase):
         self.assertEqual(len(updated), 2)
         self.assertEqual(updated[0], other)
         values = fields(updated[1])
+        self.assertEqual(values[b'appname'], b'VirtualHerePad')
         self.assertEqual(values[b'appid'], struct.pack('<I', 123))
         self.assertEqual(values[b'icon'], b'/my/art.png')
         self.assertEqual(values[b'tags'], manual[2][-1][2])
+
+    def test_rename_by_name_preserves_id_and_updates_moved_checkout(self):
+        for name in ('VHP', 'VirtualHerePad'):
+            with self.subTest(name=name):
+                data = shortcut.encode([(0, b'shortcuts', [(0, b'0', [
+                    shortcut.text('appname', name), shortcut.number('appid', 123),
+                    shortcut.text('icon', '/art.png')])])])
+                result = shortcut.update(data, Path('/home/deck/VirtualHerePad'))
+                self.assertEqual(len(entries(result)), 1)
+                values = fields(entries(result)[0])
+                self.assertEqual(values[b'appname'], b'VirtualHerePad')
+                self.assertEqual(values[b'appid'], struct.pack('<I', 123))
+                self.assertEqual(values[b'StartDir'], b'"/home/deck/VirtualHerePad"')
+                self.assertIn(b'/home/deck/VirtualHerePad/vhp.sh', values[b'LaunchOptions'])
+                self.assertEqual(values[b'icon'], b'/art.png')
+                self.assertEqual(shortcut.update(result, Path('/home/deck/VirtualHerePad')), result)
+
+    def test_shortcut_uses_script_location_not_working_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            account = home / '.local/share/Steam/userdata/123'
+            account.mkdir(parents=True)
+            checkout = home / 'custom folder/VirtualHerePad'
+            checkout.mkdir(parents=True)
+            script = checkout / 'steam-shortcut.py'
+            with patch.object(shortcut, '__file__', str(script)), patch.object(shortcut.Path, 'home', return_value=home), patch.object(shortcut.os, 'geteuid', return_value=1000), patch.object(shortcut, 'steam_running', return_value=False), patch.object(shortcut, 'offer_start_steam'), patch('sys.argv', [str(script)]):
+                shortcut.main()
+            values = fields(entries((account / 'config/shortcuts.vdf').read_bytes())[0])
+            self.assertEqual(values[b'StartDir'], f'"{checkout}"'.encode())
+            self.assertIn(f'"{checkout}/vhp.sh"'.encode(), values[b'LaunchOptions'])
 
     def test_rejects_duplicates(self):
         data = shortcut.encode([(0, b'shortcuts', [

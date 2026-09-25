@@ -131,21 +131,21 @@ if ! sudo -k -n /home/.vhp/bin/vhp-root check; then
   exit 1
 fi
 
-echo 'VHP components installed successfully.'
+echo 'VirtualHerePad components installed successfully.'
 echo 'Settings: /home/.vhp/data/config.ini (created by VirtualHere on first run).'
 echo 'Logs: journalctl -u vhp.service'
 echo
 shortcut_status='skipped (not requested)'
 if [[ -t 0 ]]; then
   echo 'If Steam is running, the shortcut helper will offer to shut it down gracefully.'
-  if read -r -p 'Add/update the VHP Steam shortcut now? [y/N] ' answer; then
+  if read -r -p 'Add/update the VirtualHerePad Steam shortcut now? [y/N] ' answer; then
     case "$answer" in
       y|Y|yes|YES)
         if python3 steam-shortcut.py; then
           shortcut_status='ready (added, updated, or already current)'
         else
           shortcut_status='not updated (see error above)'
-          echo 'VHP installation succeeded, but the Steam shortcut was not updated.'
+          echo 'VirtualHerePad installation succeeded, but the Steam shortcut was not updated.'
           echo 'Follow the message above, then rerun: python3 steam-shortcut.py'
         fi
         ;;
@@ -161,12 +161,12 @@ printf '\n== Setup complete ==\n'
 echo "Installation: successful ($commit)"
 echo "Steam shortcut: $shortcut_status"
 echo 'Settings: /home/.vhp/data/config.ini (preserved on reinstall)'
-echo 'VHP is not started or enabled at boot.'
+echo 'VirtualHerePad is not started or enabled at boot.'
 case "$shortcut_status" in
-  ready*) echo 'Next: open Steam if needed, launch VHP, then connect with the VirtualHere client.' ;;
-  *) echo 'Next: run python3 steam-shortcut.py, add the shortcut manually, or launch ./vhp.sh.' ;;
+  ready*) echo 'Next: open Steam if needed, launch VirtualHerePad, then connect with the VirtualHere client.' ;;
+  *) echo 'Next: run python3 steam-shortcut.py (or add the shortcut manually), then launch VirtualHerePad in Steam.' ;;
 esac
-echo 'Diagnostics: ./doctor.sh'
+echo 'Diagnostics: ./doctor.sh (or run ./vhp.sh manually in Konsole to test the launcher).'
 echo 'Display: VHP dims once; it does not fight Steam adaptive brightness.'
 echo 'If the screen relights, check Steam > Settings > Display > Enable Adaptive Brightness.'
 echo 'That setting is yours to change; setup leaves it untouched.'

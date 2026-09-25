@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add VHP to Steam's binary shortcuts.vdf without third-party dependencies."""
+"""Add VirtualHerePad to Steam's shortcuts.vdf without third-party dependencies."""
 import argparse
 import os
 from pathlib import Path
@@ -82,16 +82,16 @@ def update(data, checkout):
             raise ValueError('Unexpected non-object shortcut')
         values = {k: v for t, k, v in fields if t == 1}
         # Also adopt the existing manually-created shortcut, regardless of name.
-        if (values.get(b'appname', b'').lower() == b'vhp' or
+        if (values.get(b'appname', b'').lower() in (b'vhp', b'virtualherepad') or
                 b'/vhp.sh' in values.get(b'LaunchOptions', b'') or
                 b'/vhp.sh' in values.get(b'exe', b'')):
             matches.append(i)
     if len(matches) > 1:
-        raise ValueError('Multiple VHP shortcuts found; remove duplicates in Steam first')
+        raise ValueError('Multiple VirtualHerePad/VHP shortcuts found; remove duplicates in Steam first')
     path = str(checkout)
     if any(c in path for c in '\n\r\0"\\`$'):
         raise ValueError('Checkout path contains unsupported launch-option characters')
-    desired = [text('appname', 'VHP'), text('exe', '"/usr/bin/env"'),
+    desired = [text('appname', 'VirtualHerePad'), text('exe', '"/usr/bin/env"'),
                text('StartDir', f'"{path}"'),
                text('LaunchOptions', f'-u LD_PRELOAD konsole --fullscreen -e "{path}/vhp.sh"'),
                number('AllowOverlay', 1)]
@@ -108,7 +108,7 @@ def update(data, checkout):
         index = 0
         while str(index).encode() in used:
             index += 1
-        appid = zlib.crc32(b'"/usr/bin/env"VHP') | 0x80000000
+        appid = zlib.crc32(b'"/usr/bin/env"VirtualHerePad') | 0x80000000
         fields = [number('appid', appid)] + desired + [
             text('icon', ''), text('ShortcutPath', ''), number('IsHidden', 0),
             number('AllowDesktopConfig', 1), number('OpenVR', 0),
@@ -165,7 +165,7 @@ def offer_start_steam():
     if not sys.stdin.isatty() or steam_running():
         return
     try:
-        answer = input('Open Steam now to see the VHP shortcut? [y/N] ')
+        answer = input('Open Steam now to see the VirtualHerePad shortcut? [y/N] ')
     except (EOFError, KeyboardInterrupt):
         print('\nSteam left closed. Open it when ready.')
         return
@@ -236,13 +236,13 @@ def main():
     original = path.read_bytes() if path.exists() else b''
     changed = update(original, Path(__file__).resolve().parent)
     if changed == original:
-        print('VHP shortcut is already up to date.')
+        print('VirtualHerePad shortcut is already up to date.')
         offer_start_steam()
         return
     if steam_running():
         parser.error('Steam started during setup; shortcut not changed')
     save(path, changed)
-    print(f'VHP shortcut installed for account {account}. Restart Steam to see it.')
+    print(f'VirtualHerePad shortcut installed for account {account}. Restart Steam to see it.')
     offer_start_steam()
 
 
