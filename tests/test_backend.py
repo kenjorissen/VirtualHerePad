@@ -137,8 +137,18 @@ class Harness:
 
         self.thread = threading.Thread(target=run, daemon=True)
         self.thread.start()
+        # Wait for the finished socket, not merely for the file to appear: bind()
+        # creates it before chown/chmod, and clients cannot connect until listen(),
+        # which happens after both.
         end = time.monotonic() + 3
-        while not self.options.socket.exists():
+        while True:
+            try:
+                info = self.options.socket.lstat()
+                ready = (info.st_mode & 0o777) == 0o600 and info.st_uid == self.options.owner_uid
+            except FileNotFoundError:
+                ready = False
+            if ready:
+                break
             if time.monotonic() > end:
                 self.__exit__()
                 raise AssertionError(f"backend did not start: {self.error!r}")
