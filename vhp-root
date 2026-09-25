@@ -31,7 +31,69 @@ case "$1" in
 esac
 
 BRIGHTNESS_FILE=/sys/class/backlight/amdgpu_bl0/brightness
+BRIGHTNESS_PERCENT_FILE=/home/.vhp/data/brightness-percent
 brightness=''
+
+# BEGIN BRIGHTNESS_FUNCTIONS
+# This file is data, never sourced/executed. Invalid/missing preferences use 5%.
+read_brightness_percent() {
+  # Six bytes are enough to validate 100 + CRLF and detect excess data.
+  # NONBLOCK and NOFOLLOW avoid hanging on a FIFO or following a symlink.
+  /usr/bin/python3 -I - "$BRIGHTNESS_PERCENT_FILE" <<'VHP_PERCENT'
+import os
+import re
+import stat
+import sys
+
+percent = 5
+try:
+    fd = os.open(sys.argv[1], os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ValueError("not a regular file")
+        data = os.read(fd, 6)
+    finally:
+        os.close(fd)
+    if re.fullmatch(rb"[0-9]{1,3}(?:\r?\n)?", data) is None or int(data) > 100:
+        raise ValueError("expected an integer from 0 to 100")
+    percent = int(data)
+except (OSError, ValueError):
+    print("Brightness preference missing/invalid; using 5% (expected integer 0-100).", file=sys.stderr)
+print(percent)
+VHP_PERCENT
+}
+
+apply_brightness() {
+  local maximum percent target
+  percent=$(read_brightness_percent)
+  if [[ -r "$BRIGHTNESS_FILE" && -w "$BRIGHTNESS_FILE" &&
+    -r "${BRIGHTNESS_FILE%/*}/max_brightness" ]]; then
+    maximum=$(<"${BRIGHTNESS_FILE%/*}/max_brightness")
+    if [[ ! $maximum =~ ^[0-9]{1,9}$ ]] || ((10#$maximum == 0)); then
+      echo 'WARNING: invalid max_brightness; leaving backlight unchanged.' >&2
+      return 0
+    fi
+    brightness=$(<"$BRIGHTNESS_FILE")
+    if [[ ! $brightness =~ ^[0-9]{1,9}$ ]]; then
+      brightness=''
+      echo 'WARNING: invalid original brightness; leaving backlight unchanged.' >&2
+      return 0
+    fi
+    target=$(((10#$maximum * percent + 50) / 100))
+    echo "Saved backlight brightness=$brightness from $BRIGHTNESS_FILE"
+    if [[ $brightness == 0 ]]; then
+      echo 'WARNING: backlight was already zero at startup; exit will restore zero.' >&2
+    fi
+    if printf '%s\n' "$target" >"$BRIGHTNESS_FILE"; then
+      echo "Set backlight to $percent% ($target of $maximum)."
+    else
+      echo 'WARNING: could not set backlight brightness.' >&2
+    fi
+  else
+    echo "WARNING: backlight unavailable: $BRIGHTNESS_FILE" >&2
+  fi
+}
+# END BRIGHTNESS_FUNCTIONS
 child=''
 touch_monitor=''
 cleanup() {
@@ -67,16 +129,7 @@ trap 'exit 0' INT TERM
 
 # Give the launcher a startup grace period, then require regular heartbeats.
 heartbeat
-if [[ -r "$BRIGHTNESS_FILE" && -w "$BRIGHTNESS_FILE" ]]; then
-  brightness=$(<"$BRIGHTNESS_FILE")
-  echo "Saved backlight brightness=$brightness from $BRIGHTNESS_FILE"
-  if [[ $brightness == 0 ]]; then
-    echo 'WARNING: backlight was already zero at startup; exit will restore zero.' >&2
-  fi
-  printf '0\n' >"$BRIGHTNESS_FILE"
-else
-  echo "WARNING: backlight unavailable: $BRIGHTNESS_FILE" >&2
-fi
+apply_brightness
 
 # This root-only marker is checked in the existing heartbeat loop (no extra polling).
 rm -f /run/vhp/touch-stop

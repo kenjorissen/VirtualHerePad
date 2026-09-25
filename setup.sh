@@ -115,7 +115,7 @@ for directory in "$base" "$base/bin" "$data"; do
     fi
   fi
 done
-for config in "$base/config.ini" "$data/config.ini"; do
+for config in "$base/config.ini" "$data/config.ini" "$data/brightness-percent"; do
   if [[ -L "$config" ]]; then
     echo "Refusing symlinked config: $config" >&2
     exit 1
@@ -127,6 +127,11 @@ for config in "$base/config.ini" "$data/config.ini"; do
 done
 install -d -o root -g root -m 755 "$base" "$base/bin"
 install -d -o root -g root -m 700 "$data"
+# User preference: create once, never overwrite on setup/update.
+if [[ ! -e "$data/brightness-percent" ]]; then
+  printf '5\n' > "$data/brightness-percent"
+  chmod 600 "$data/brightness-percent"
+fi
 for previous in "$base/config.ini" /var/lib/vhp/config.ini; do
   if [[ ! -e "$data/config.ini" && -f "$previous" ]]; then
     install -o root -g root -m 600 "$previous" "$data/config.ini"
@@ -206,7 +211,8 @@ if [[ $shortcut_status == ready* ]]; then
 else
   echo 'Before deleting the checkout, update any old Steam shortcut to use the installed launcher.'
 fi
-echo 'Display: VHP dims once; it does not fight Steam adaptive brightness.'
+echo 'Display: defaults to 5%; edit /home/.vhp/data/brightness-percent (0-100) with sudo.'
+echo 'Existing brightness preferences are preserved. VHP does not fight Steam adaptive brightness.'
 echo 'If the screen relights, check Steam > Settings > Display > Enable Adaptive Brightness.'
 echo 'That setting is yours to change; setup leaves it untouched.'
 echo 'Tip: keep the launcher open; hold one finger in any screen corner for 2 seconds to stop.'

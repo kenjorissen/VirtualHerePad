@@ -31,6 +31,20 @@ class SettingsTests(unittest.TestCase):
             for name, mode in [("base", 0o755), ("base/bin", 0o755), ("base/data", 0o700)]:
                 self.assertEqual((folder / name).stat().st_mode & 0o777, mode)
             self.assertFalse((folder / "base/data/config.ini").exists())
+            preference = folder / "base/data/brightness-percent"
+            self.assertEqual(preference.read_text(), "5\n")
+            self.assertEqual(preference.stat().st_mode & 0o777, 0o600)
+
+    def test_reinstall_preserves_brightness_preference(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            self.assertEqual(self.run_setup(folder).returncode, 0)
+            preference = folder / "base/data/brightness-percent"
+            for content in ("0\n", "33\n", "invalid-but-user-owned-content\n"):
+                preference.write_text(content)
+                result = self.run_setup(folder)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(preference.read_text(), content)
 
     def test_copy_preserves_original_and_never_overwrites(self):
         for source in ("old", "base"):
@@ -60,7 +74,14 @@ class SettingsTests(unittest.TestCase):
             self.assertNotEqual(self.run_setup(folder).returncode, 0)
 
     def test_rejects_symlinks(self):
-        for name in ("base", "base/bin", "base/data", "base/config.ini", "base/data/config.ini"):
+        for name in (
+            "base",
+            "base/bin",
+            "base/data",
+            "base/config.ini",
+            "base/data/config.ini",
+            "base/data/brightness-percent",
+        ):
             with self.subTest(path=name), tempfile.TemporaryDirectory() as temporary:
                 folder = Path(temporary)
                 link = folder / name

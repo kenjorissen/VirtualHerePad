@@ -29,6 +29,9 @@ class LifecycleTests(unittest.TestCase):
             brightness = folder / "brightness"
             brightness.write_text("73\n")
             brightness.chmod(0o640)
+            (folder / "max_brightness").write_text("200\n")
+            preference = folder / "brightness-percent"
+            preference.write_text("5\n")
             server = folder / "server"
             # Ignore TERM to verify bounded shutdown and escalation too.
             server.write_text(
@@ -36,13 +39,19 @@ class LifecycleTests(unittest.TestCase):
             )
             server.chmod(0o755)
             monitor = folder / "touch-stop.py"
-            monitor.write_text("import time\nwhile True: time.sleep(60)\n")
+            monitor_ready = folder / "monitor-ready"
+            monitor.write_text(
+                "import time\nfrom pathlib import Path\n"
+                f"Path({str(monitor_ready)!r}).touch()\n"
+                "while True: time.sleep(60)\n"
+            )
             helper = folder / "helper"
             source = (ROOT / "vhp-root").read_text()
             source = source.replace("[[ $EUID == 0 && $# == 1 ]]", "[[ $# == 1 ]]")
             source = source.replace("/run/vhp", str(runtime))
             source = source.replace("/sys/class/backlight/amdgpu_bl0/brightness", str(brightness))
             source = source.replace("/home/.vhp/bin/vhusbdx86_64", str(server))
+            source = source.replace("/home/.vhp/data/brightness-percent", str(preference))
             source = source.replace("/home/.vhp/bin/touch-stop.py", str(monitor))
             source = source.replace('exec /usr/bin/systemctl "$1" vhp.service', "exit 0")
             helper.write_text(source)
@@ -73,7 +82,7 @@ class LifecycleTests(unittest.TestCase):
             try:
                 # Bounded readiness check for this local test fixture.
                 deadline = time.monotonic() + 3
-                while brightness.read_text().strip() != "0":
+                while brightness.read_text().strip() != "10":
                     if time.monotonic() > deadline or service.poll() is not None:
                         self.fail("Mock service failed to dim brightness")
                     time.sleep(0.02)
@@ -92,6 +101,13 @@ class LifecycleTests(unittest.TestCase):
                     client.kill()  # No EXIT trap can run.
                     client.wait(timeout=2)
                 elif touch_exit:
+                    # The real monitor starts only after stale requests are cleared.
+                    # Brightness alone does not establish that startup has finished.
+                    deadline = time.monotonic() + 3
+                    while not monitor_ready.exists():
+                        if time.monotonic() > deadline or service.poll() is not None:
+                            self.fail("Mock touchscreen monitor did not become ready")
+                        time.sleep(0.02)
                     (runtime / "touch-stop").touch()
                 else:
                     service.send_signal(signal.SIGTERM)
