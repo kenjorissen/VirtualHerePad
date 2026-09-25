@@ -309,6 +309,22 @@ old local files are left untouched.
 
 This additionally deletes `/home/.vhp` and any previous `/var/lib/vhp` data.
 
+## Credits and origins
+
+VirtualHerePad began as a local adaptation of
+[Deckpad by HelloThisIsFlo](https://github.com/HelloThisIsFlo/Deckpad), and has
+since been substantially reworked. Thank you to HelloThisIsFlo and Deckpad's
+contributors for the original Steam Deck-as-network-controller workflow,
+Steam/Konsole launch approach, screen dimming and sleep handling, and the idea
+of using the local touchscreen to exit while the controller is shared.
+
+This repository has its own Git history rather than being a GitHub fork. Its
+service management, installer, shortcut editor, heartbeat cleanup, and
+standard-library Python touchscreen monitor were developed for VirtualHerePad.
+That does not erase its Deckpad origins or imply endorsement by Deckpad's authors.
+Upstream authors retain their rights; this project's MIT license does not grant
+rights to Deckpad's code or assets.
+
 ## License
 
 Repository scripts and documentation are MIT licensed; see [LICENSE](LICENSE).
