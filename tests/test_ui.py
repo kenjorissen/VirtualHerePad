@@ -21,8 +21,13 @@ try:
     from PySide6.QtCore import QCoreApplication, QUrl, qInstallMessageHandler
     from PySide6.QtGui import QGuiApplication
     from PySide6.QtQml import QQmlApplicationEngine
+
+    # Importing QtQuick registers the QQuickItem* converter that
+    # QQuickWindow.contentItem needs; without it PySide6 raises.
+    from PySide6.QtQuick import QQuickItem
     from test_backend import Harness
 
+    import vhp_keyboard
     import vhp_ui
 
     HAVE_QT = True
@@ -32,6 +37,13 @@ except ImportError as error:  # pragma: no cover - depends on the environment
 
 KEY_A = bytes([0, 0, 4, 0, 0, 0, 0, 0])
 SHIFT_A = bytes([0b00000010, 0, 4, 0, 0, 0, 0, 0])
+
+
+def walk(item):
+    """Every item in a QML visual tree, parents before children."""
+    yield item
+    for child in item.childItems():
+        yield from walk(child)
 
 
 def pump(seconds, until=None):
@@ -195,6 +207,42 @@ class QmlTests(QtTestCase):
         ]
         self.assertEqual(problems, [])
         self.assertTrue(roots)
+
+    def test_the_keyboard_renders_a_keycap_per_key_and_toggles_visibility(self):
+        # A silently-empty delegate model still loads cleanly and reports no QML
+        # errors, so assert on real rendered items rather than on messages.
+        # QML items are not reachable via findChildren; walk the visual tree.
+        with Harness() as harness:
+            bridge = self.bridge_for(harness)
+            engine = QQmlApplicationEngine()
+            engine.setInitialProperties({"vhp": bridge})
+            engine.load(QUrl.fromLocalFile(str(ROOT / "vhp_ui.qml")))
+            self.assertTrue(engine.rootObjects(), "QML produced no root object")
+            window = engine.rootObjects()[0]
+            content = window.property("contentItem")
+            self.assertIsInstance(content, QQuickItem)
+
+            def rendered(name):
+                pump(0.2)
+                return [item for item in walk(content) if item.objectName() == name]
+
+            keypad = rendered("keypad")
+            self.assertEqual(len(keypad), 1)
+            # Hidden, not absent: delegate models are built either way.
+            self.assertFalse(keypad[0].property("visible"))
+
+            expected = sum(len(row) for row in vhp_keyboard.layout_grid("us"))
+            self.assertEqual(len(rendered("keycap")), expected)
+            labels = {item.property("text") for item in rendered("keycapLabel")}
+            self.assertIn("a", labels)
+            self.assertIn("Space", labels)
+
+            window.setProperty("keyboardOpen", True)
+            self.assertTrue(rendered("keypad")[0].property("visible"))
+            self.assertEqual(len(rendered("keycap")), expected)
+
+            window.setProperty("keyboardOpen", False)
+            self.assertFalse(rendered("keypad")[0].property("visible"))
 
     def test_qml_declares_the_bridge_as_a_required_property(self):
         # Context properties are cleared before the object tree is destroyed,

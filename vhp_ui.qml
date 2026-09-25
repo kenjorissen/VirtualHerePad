@@ -99,6 +99,7 @@ Window {
 
     Column {
         id: keypad
+        objectName: "keypad"
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: topBar.bottom
@@ -111,17 +112,22 @@ Window {
 
             delegate: Row {
                 id: keyRow
-                height: keypad.height / 6
+                // Declared explicitly: an unqualified modelData is not reachable as
+                // `keyRow.modelData`, and an empty model silently draws nothing.
+                required property var modelData
+                height: keypad.height / vhp.rows.length
                 spacing: 0
 
                 Repeater {
                     model: keyRow.modelData
 
                     delegate: Item {
+                        required property var modelData
                         width: keypad.width * modelData.span / window.columns
                         height: keyRow.height
 
                         Rectangle {
+                            objectName: "keycap"
                             anchors.fill: parent
                             anchors.margins: 3
                             radius: 10
@@ -130,6 +136,7 @@ Window {
                             border.width: 1
 
                             Text {
+                                objectName: "keycapLabel"
                                 anchors.centerIn: parent
                                 text: modelData.label
                                 color: "#eaf2f8"

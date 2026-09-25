@@ -151,6 +151,11 @@ heartbeat check, normally within about a second; Ctrl+C shows it immediately.
 The message remains visible until the stop command finishes, then terminal state
 is restored. The brief shutdown wait remains necessary for orderly USB cleanup.
 
+While VHP is running, the service holds a systemd inhibitor for both **sleep** and
+**idle**, so the Deck neither suspends nor blanks its screen mid-session. Both are
+released when VHP exits. Note that this keeps a mostly static image on screen for
+the whole session, which is worth considering on an OLED panel.
+
 For corner-hold exit, keep one finger within the outer **12% of both screen axes**
 for two seconds. Releasing, moving out, or adding another finger cancels it.
 After multiple fingers, lift them all before retrying. A finger already down at

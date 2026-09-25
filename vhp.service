@@ -8,7 +8,9 @@ Type=simple
 WorkingDirectory=/home/.vhp/data
 RuntimeDirectory=vhp
 RuntimeDirectoryMode=0700
-ExecStart=/usr/bin/systemd-inhibit --what=sleep --mode=block --who=VHP "--why=Sharing Steam Deck controller" /home/.vhp/bin/vhp-root run
+# sleep: keep the Deck awake while sharing. idle: stop the screen blanking out
+# from under the dashboard and the touch keyboard. Both are released on exit.
+ExecStart=/usr/bin/systemd-inhibit --what=sleep:idle --mode=block --who=VHP "--why=Sharing Steam Deck controller" /home/.vhp/bin/vhp-root run
 KillMode=control-group
 KillSignal=SIGTERM
 TimeoutStopSec=15
