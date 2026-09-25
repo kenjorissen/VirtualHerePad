@@ -85,8 +85,10 @@ The generated shortcut uses your checkout's actual path:
 - **Enable Steam Overlay:** on
 
 You can keep your existing shortcut or configure those fields manually instead.
-Keep the launcher open; use **Steam > Exit Game** to stop. Controller
-sharing/input behavior still needs testing on your Deck and client machine.
+Keep the launcher open. A local Bluetooth keyboard can stop it with **Ctrl+C**.
+The Deck's Steam button may be forwarded to the VirtualHere client, so don't
+rely on it to open the local Steam menu. If you can access that menu locally,
+**Steam > Exit Game** also stops VHP.
 
 Only one service instance is supported. Don't open multiple launchers: closing
 one stops the shared service. The launcher sends a heartbeat every second.
@@ -141,7 +143,13 @@ installation does not sandbox vulnerabilities in VirtualHere itself.
 
 A temporary `systemd-inhibit` sleep lock prevents normal system sleep.
 Backlight brightness is restored on normal stop without changing sysfs file
-permissions. Steam can still adjust brightness while VHP runs. The backlight
+permissions. Dimming is a one-time write; VHP does not continuously override
+Steam's brightness control. Adaptive brightness can relight the screen while
+VHP runs. Setup warns about this but does **not** check or change the setting:
+there is no verified shell interface for it. You can leave adaptive brightness
+enabled. If relighting becomes a problem, check **Steam > Settings > Display >
+Enable Adaptive Brightness** and optionally disable it while sharing.
+The backlight
 path is currently `amdgpu_bl0`; on hardware without it, dimming is skipped.
 A crash/power loss or forced kill of the privileged service itself may prevent
 brightness restoration; killing only the launcher is handled by the heartbeat. Sleep

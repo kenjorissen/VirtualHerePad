@@ -44,6 +44,8 @@ else
   echo 'WARNING: Python 3 is unavailable; automatic Steam shortcut creation will be skipped.'
 fi
 echo 'Preflight passed. No Steam processes were stopped.'
+echo 'Display note: Steam adaptive brightness may override VHP screen dimming.'
+echo 'Its current setting is not checked or changed. You can leave it enabled.'
 
 tmp=$(mktemp -d)
 trap 'rm -rf -- "$tmp"' EXIT
@@ -172,4 +174,8 @@ case "$shortcut_status" in
   *) echo 'Next: run python3 steam-shortcut.py, add the shortcut manually, or launch ./vhp.sh.' ;;
 esac
 echo 'Diagnostics: ./doctor.sh'
-echo 'Tip: keep the launcher open while sharing; Steam > Exit Game stops VHP.'
+echo 'Display: VHP dims once; it does not fight Steam adaptive brightness.'
+echo 'If the screen relights, check Steam > Settings > Display > Enable Adaptive Brightness.'
+echo 'That setting is yours to change; setup leaves it untouched.'
+echo 'Tip: keep the launcher open while sharing; use a local keyboard and Ctrl+C to stop.'
+echo 'The Deck Steam button may be forwarded to the VirtualHere client.'

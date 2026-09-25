@@ -18,7 +18,8 @@ trap cleanup EXIT
 trap 'exit 0' INT TERM
 
 sudo -n "$HELPER" start
-echo 'VHP is running. Leave this window open; use Steam > Exit Game to stop.'
+echo 'VHP is running. Leave this window open; use a local keyboard and Ctrl+C to stop.'
+echo 'The Deck Steam button may be forwarded to the VirtualHere client.'
 while /usr/bin/systemctl is-active --quiet vhp.service; do
   sudo -n "$HELPER" keepalive
   # Keep a foreground input loop for the Konsole/Steam input context.

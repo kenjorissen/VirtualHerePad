@@ -69,6 +69,8 @@ systemctl --no-pager status vhp.service || true
 systemctl show vhp.service -p LoadState -p ActiveState -p SubState -p Result
 
 section 'Backlight and sleep'
+echo 'Steam adaptive brightness: not queried or changed by VHP.'
+echo 'It may override one-time dimming; check Steam > Settings > Display if the screen relights.'
 if [[ -r /sys/class/backlight/amdgpu_bl0/brightness ]]; then
   printf 'Current brightness: '
   head -n 1 /sys/class/backlight/amdgpu_bl0/brightness
