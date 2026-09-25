@@ -24,6 +24,21 @@ import vhp_keyboard  # noqa: E402
 RETRY_MS = 2000
 
 
+def prefer_wayland(environment=None):
+    """Choose the Wayland plugin when nothing else was requested.
+
+    Qt's default on Linux is xcb, which needs XWayland's DISPLAY and a system
+    libxcb-cursor0 that stock SteamOS may not have; both Desktop Mode and Gaming
+    Mode are Wayland sessions, so the bundled Wayland plugin is the better
+    default. An explicit QT_QPA_PLATFORM always wins.
+    """
+    environment = os.environ if environment is None else environment
+    if environment.get("QT_QPA_PLATFORM") or not environment.get("WAYLAND_DISPLAY"):
+        return False
+    environment["QT_QPA_PLATFORM"] = "wayland"
+    return True
+
+
 class Bridge(QObject):
     """Socket client plus the touch-key state machine, exposed to QML."""
 
@@ -221,6 +236,7 @@ def parse_arguments(argv):
 
 def main(argv=None):
     options = parse_arguments(sys.argv[1:] if argv is None else argv)
+    prefer_wayland()  # Must happen before QGuiApplication selects a backend.
     application = QGuiApplication(sys.argv[:1])
     application.setApplicationName("VirtualHerePad")
     # Exposed as a root-object property rather than a context property: Qt clears

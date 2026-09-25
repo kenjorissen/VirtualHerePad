@@ -204,5 +204,31 @@ class QmlTests(QtTestCase):
         self.assertNotIn("setContextProperty", (ROOT / "vhp_ui.py").read_text())
 
 
+class PlatformTests(unittest.TestCase):
+    def test_wayland_is_preferred_when_nothing_was_requested(self):
+        environment = {"WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0"}
+        self.assertTrue(vhp_ui.prefer_wayland(environment))
+        self.assertEqual(environment["QT_QPA_PLATFORM"], "wayland")
+
+    def test_an_explicit_platform_always_wins(self):
+        for platform in ("offscreen", "xcb", "wayland", "minimal"):
+            with self.subTest(platform=platform):
+                environment = {"WAYLAND_DISPLAY": "wayland-0", "QT_QPA_PLATFORM": platform}
+                self.assertFalse(vhp_ui.prefer_wayland(environment))
+                self.assertEqual(environment["QT_QPA_PLATFORM"], platform)
+
+    def test_nothing_changes_without_a_wayland_session(self):
+        for environment in ({}, {"DISPLAY": ":0"}, {"WAYLAND_DISPLAY": ""}):
+            with self.subTest(environment=environment):
+                before = dict(environment)
+                self.assertFalse(vhp_ui.prefer_wayland(environment))
+                self.assertEqual(environment, before)
+
+    def test_wayland_is_chosen_before_qt_picks_a_backend(self):
+        # Setting QT_QPA_PLATFORM after QGuiApplication exists has no effect.
+        source = (ROOT / "vhp_ui.py").read_text()
+        self.assertLess(source.index("prefer_wayland()"), source.index("QGuiApplication(sys.argv"))
+
+
 if __name__ == "__main__":
     unittest.main()
