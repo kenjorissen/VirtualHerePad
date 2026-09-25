@@ -66,6 +66,11 @@ fi
 say 'Checking sudo access...'
 sudo -v
 
+say '== Installing the service unit from this checkout =='
+say "   (/etc/systemd/system/vhp.service)"
+sudo install -o root -g root -m 644 vhp.service /etc/systemd/system/vhp.service
+sudo systemctl daemon-reload
+
 say '== Starting VHP (VirtualHere server) =='
 sudo -n "$HELPER" start
 # The launcher normally refreshes the heartbeat; here the sandbox does it.
