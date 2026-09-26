@@ -24,6 +24,23 @@ VirtualHere is proprietary software, separate from VirtualHerePad. See its
 [official site](https://www.virtualhere.com/) for licensing, trial limitations,
 pricing, and support.
 
+### VirtualHere licensing
+
+**A paid VirtualHere server license is strongly recommended for all users,
+including controller-only use.** It supports the software that makes VHP's USB
+sharing possible. Purchase and licensing are handled directly by
+[VirtualHere](https://www.virtualhere.com/), separately from this free, open-source
+project.
+
+**A license is required for VHP's controller-plus-keyboard support:** the Steam
+Controller and VHP Touch Keyboard are **two separate USB devices**, shared at the
+same time. The unlicensed one-device allowance is suitable for controller-only
+use with the **terminal dashboard**, not controller-plus-keyboard use.
+
+Keyboard mode also requires selecting **Use** for **both devices** in the
+VirtualHere client. VHP neither combines them into one device nor bypasses
+VirtualHere's licensing.
+
 ## Quick start: Steam Deck
 
 No system packages, pip, virtual environment, or SteamOS read-only changes are
@@ -45,8 +62,9 @@ at launch. The installed keyboard packaging still needs Deck acceptance testing.
    ./setup.sh
    ```
 
-3. **Choose the interface and add the shortcut.** Select `keyboard` (recommended)
-   or `terminal` when setup asks, then accept its offer to add **VirtualHerePad** to Steam.
+3. **Choose the interface and add the shortcut.** Select `keyboard` (recommended
+   with a VirtualHere license) or `terminal` (controller-only, including unlicensed
+   use) when setup asks, then accept its offer to add **VirtualHerePad** to Steam.
    Save games and finish downloads before allowing it to close Steam. Reopen
    Steam when prompted, or open it yourself. If you already have a VirtualHere
    config/license, [import it](#virtualhere-config-and-license) before launching.
@@ -75,8 +93,8 @@ instead, see [Manual server download](#manual-server-download).
 ### Selecting or switching interfaces
 
 ```bash
-./setup.sh --keyboard   # keyboard + dashboard, with private Qt
-./setup.sh --terminal   # terminal dashboard; no Qt download
+./setup.sh --keyboard   # controller + keyboard; VirtualHere license required; private Qt
+./setup.sh --terminal   # controller-only dashboard; no Qt download
 ```
 
 Setup remembers the choice; noninteractive setup uses that choice, or keyboard
@@ -134,9 +152,10 @@ it before changing the installed service.
 3. In the client's device tree, right-click **Steam Controller** (the label may
    include **Valve Software**) and select **Use**. Keep the touchscreen local—you
    need it for the corner-hold exit gesture.
-4. In keyboard mode, also select **Use** on **VHP Touch Keyboard**. Sharing the
-   controller and keyboard simultaneously requires a VirtualHere license/trial
-   allowance for **two devices**. VHP does not bypass licensing.
+4. In keyboard mode, also select **Use** on **VHP Touch Keyboard**. A licensed
+   VirtualHere server is required to share it alongside the controller—these are
+   **two devices**, each selected separately in the client. A license is strongly
+   recommended for controller-only use too; see [licensing](#virtualhere-licensing).
 5. Configure the controller through Steam/Steam Input on the PC as needed, then
    play. Stopping use in the client disconnects the controller; use the Deck's
    corner-hold gesture to stop VHP itself.
