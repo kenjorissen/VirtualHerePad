@@ -48,10 +48,11 @@ VirtualHere's licensing.
 ## Quick start: Steam Deck
 
 No system packages, pip, virtual environment, or SteamOS read-only changes are
-needed. **Keyboard mode** downloads a private, matched Qt/PySide6 **6.11.2** runtime
-(about 76 MiB compressed); **terminal mode** skips Qt. Keyboard mode needs Python
-3.10+, compatible glibc, and the stock `dummy_hcd`, `libcomposite`, `usb_f_hid`, and
-uinput kernel support. Setup checks Qt compatibility; gadget support is checked
+needed. **Terminal mode is the default** and skips Qt. Optional **keyboard mode**
+downloads a private, matched Qt/PySide6 **6.11.2** runtime (about 76 MiB compressed).
+Keyboard mode needs Python 3.10+, compatible glibc, and the stock `dummy_hcd`,
+`libcomposite`, `usb_f_hid`, and uinput kernel support.
+Setup checks Qt compatibility; gadget support is checked
 at launch. The installed keyboard packaging still needs Deck acceptance testing.
 
 1. **Prepare the Deck.** Log into Steam once, switch to **Desktop Mode**, and open
@@ -66,9 +67,9 @@ at launch. The installed keyboard packaging still needs Deck acceptance testing.
    ./setup.sh
    ```
 
-3. **Choose the interface and add the shortcut.** Select `keyboard` (recommended
-   with a VirtualHere license) or `terminal` (controller-only, including unlicensed
-   use) when setup asks, then accept its offer to add **VirtualHerePad** to Steam.
+3. **Choose the interface and add the shortcut.** Keep `terminal` (the default,
+   controller-only) or opt into `keyboard` if you have a VirtualHere license.
+   Then accept setup's offer to add **VirtualHerePad** to Steam.
    Save games and finish downloads before allowing it to close Steam. Reopen
    Steam when prompted, or open it yourself. If you already have a VirtualHere
    config/license, [import it](#virtualhere-config-and-license) before launching.
@@ -97,13 +98,15 @@ instead, see [Manual server download](#manual-server-download).
 ### Selecting or switching interfaces
 
 ```bash
-./setup.sh --keyboard   # controller + keyboard; VirtualHere license required; private Qt
-./setup.sh --terminal   # controller-only dashboard; no Qt download
+./setup.sh              # fresh install: terminal dashboard; no Qt download
+./setup.sh --terminal   # explicitly select controller-only mode
+./setup.sh --keyboard   # opt in: VirtualHere license required; private Qt
 ```
 
-Setup remembers the choice; noninteractive setup uses that choice, or keyboard
-for a fresh installation. Accept shortcut updating to apply it to Steam. Only
-one **VirtualHerePad** entry is updated, preserving its app ID and artwork.
+Setup remembers the choice; reinstalls keep it unless you select another mode.
+Fresh installations default to terminal mode, including noninteractive setup.
+Accept shortcut updating to apply it to Steam. Only one **VirtualHerePad** entry
+is updated, preserving its app ID and artwork.
 Both interfaces are installed; terminal mode remains available as a fallback.
 To switch an already-equipped installation without a checkout:
 
@@ -404,8 +407,8 @@ hashes. An inactive service is normal when VHP isn't running.
 To test the installed launcher directly, run this in the Deck's Konsole:
 
 ```bash
-~/.local/share/VirtualHerePad/vhp-launch.sh --keyboard
-# Or: --terminal
+~/.local/share/VirtualHerePad/vhp-launch.sh --terminal
+# Or: --keyboard (if installed with Qt)
 ```
 
 It starts the same service and adjusts brightness. Review diagnostic logs before
@@ -448,7 +451,7 @@ Manual fields for the normal `deck` account:
 | Name | `VirtualHerePad` |
 | Target | `"/usr/bin/env"` |
 | Start In | `"/home/deck/.local/share/VirtualHerePad"` |
-| Launch Options | `-u LD_PRELOAD "/home/deck/.local/share/VirtualHerePad/vhp-launch.sh" --keyboard` (or `--terminal`) |
+| Launch Options | `-u LD_PRELOAD "/home/deck/.local/share/VirtualHerePad/vhp-launch.sh" --terminal` (or opt into `--keyboard`) |
 | Steam Overlay | On |
 | Force Steam Play compatibility tool | Off (native Linux launcher) |
 

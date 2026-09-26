@@ -9,7 +9,7 @@ if [[ $# -gt 1 ]]; then
   exit 1
 fi
 if [[ -z $mode ]]; then
-  mode=keyboard
+  mode=terminal
   if [[ -f $base/launch-mode ]]; then read -r mode <"$base/launch-mode"; fi
   mode="--$mode"
 fi

@@ -26,7 +26,7 @@ for option in "$@"; do
       ;;
     --help | -h)
       echo 'Usage: ./setup.sh [--keyboard|--terminal] [--manual-download]'
-      echo 'Keyboard mode includes a private Qt download; terminal mode needs no Qt.'
+      echo 'Fresh installs default to terminal mode (no Qt). Keyboard mode is opt-in and requires a VirtualHere license.'
       echo 'Default: download from VirtualHere and verify its official SHA1SUM.'
       echo 'Manual: use ~/Downloads/vhusbdx86_64 without downloading; verify it yourself first.'
       echo 'VHP_SERVER_PATH selects another local binary (also skips downloading).'
@@ -60,13 +60,14 @@ fi
   echo 'An x86-64 Steam Deck is required.' >&2
   exit 1
 }
+# BEGIN MODE_SELECTION
 USER_ROOT="${HOME:?HOME must be set}/.local/share/VirtualHerePad"
 if [[ -z $mode ]]; then
-  mode=keyboard
+  mode=terminal
   if [[ -f $USER_ROOT/launch-mode ]]; then read -r mode <"$USER_ROOT/launch-mode"; fi
-  [[ $mode == keyboard || $mode == terminal ]] || mode=keyboard
+  [[ $mode == keyboard || $mode == terminal ]] || mode=terminal
   if [[ -t 0 ]]; then
-    echo 'Choose the Steam interface: keyboard (recommended) or terminal (no Qt download).'
+    echo 'Choose the Steam interface: terminal (no Qt) or keyboard (requires a VirtualHere license and private Qt).'
     read -r -p "Interface [$mode]: " answer || true
     mode=${answer:-$mode}
     [[ $mode == keyboard || $mode == terminal ]] || {
@@ -75,6 +76,7 @@ if [[ -z $mode ]]; then
     }
   fi
 fi
+# END MODE_SELECTION
 user=$(id -un)
 [[ $user =~ ^[a-z_][a-z0-9_-]*\$?$ ]] || {
   echo 'Unsupported username.' >&2

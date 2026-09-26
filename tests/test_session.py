@@ -84,6 +84,66 @@ class SessionTests(unittest.TestCase):
 
 
 class ModeTests(unittest.TestCase):
+    def test_setup_defaults_to_terminal_and_preserves_or_overrides_saved_choice(self):
+        source = (ROOT / "setup.sh").read_text()
+        block = source.split("# BEGIN MODE_SELECTION\n", 1)[1].split("# END MODE_SELECTION", 1)[0]
+        for saved, explicit, expected in (
+            (None, "", "terminal"),
+            ("keyboard", "", "keyboard"),
+            ("terminal", "", "terminal"),
+            ("invalid", "", "terminal"),
+            (None, "keyboard", "keyboard"),
+            ("keyboard", "terminal", "terminal"),
+            ("terminal", "keyboard", "keyboard"),
+        ):
+            with (
+                self.subTest(saved=saved, explicit=explicit),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                home = Path(directory)
+                if saved is not None:
+                    preference = home / ".local/share/VirtualHerePad/launch-mode"
+                    preference.parent.mkdir(parents=True)
+                    preference.write_text(saved + "\n")
+                result = subprocess.run(
+                    ["bash", "-euc", block + '\nprintf "%s\\n" "$mode"'],
+                    env=dict(os.environ, HOME=str(home), mode=explicit),
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip(), expected)
+
+    def test_wrapper_without_mode_defaults_to_terminal_but_honors_saved_keyboard(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            launcher = root / "vhp-launch.sh"
+            launcher.write_text((ROOT / "vhp-launch.sh").read_text())
+            terminal = root / "vhp-gui.sh"
+            terminal.write_text("#!/bin/bash\necho terminal\n")
+            terminal.chmod(0o755)
+            (root / "vhp_session.py").write_text('print("keyboard")\n')
+            for saved, arguments, expected in (
+                (None, [], "terminal"),
+                ("keyboard", [], "keyboard"),
+                ("keyboard", ["--terminal"], "terminal"),
+                ("terminal", ["--keyboard"], "keyboard"),
+            ):
+                with self.subTest(saved=saved, arguments=arguments):
+                    if saved is not None:
+                        (root / "launch-mode").write_text(saved + "\n")
+                    result = subprocess.run(
+                        ["bash", str(launcher), *arguments],
+                        stdin=subprocess.DEVNULL,
+                        capture_output=True,
+                        text=True,
+                        timeout=3,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout.strip(), expected)
+
     def test_fixed_root_start_modes_and_busy_refusal(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
