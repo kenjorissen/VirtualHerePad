@@ -52,8 +52,7 @@ needed. **Terminal mode is the default** and skips Qt. Optional **keyboard mode*
 downloads a private, matched Qt/PySide6 **6.11.2** runtime (about 76 MiB compressed).
 Keyboard mode needs Python 3.10+, compatible glibc, and the stock `dummy_hcd`,
 `libcomposite`, `usb_f_hid`, and uinput kernel support.
-Setup checks Qt compatibility; gadget support is checked
-at launch. The installed keyboard packaging still needs Deck acceptance testing.
+Setup checks Qt compatibility; gadget support is checked at launch.
 
 1. **Prepare the Deck.** Log into Steam once, switch to **Desktop Mode**, and open
    **Konsole**. Run as your normal user, not root. If you haven't set a sudo
@@ -62,7 +61,7 @@ at launch. The installed keyboard packaging still needs Deck acceptance testing.
 
    ```bash
    cd ~
-   git clone --branch touch-keyboard https://github.com/kenjorissen/VirtualHerePad.git
+   git clone https://github.com/kenjorissen/VirtualHerePad.git
    cd VirtualHerePad
    ./setup.sh
    ```
