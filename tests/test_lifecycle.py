@@ -31,7 +31,7 @@ class LifecycleTests(unittest.TestCase):
         self.exercise(kill_launcher=False, keyboard_exit=True)
 
     def test_keyboard_launcher_sigkill_stops_backend_and_restores_brightness(self):
-        self.exercise(kill_launcher=True, keyboard=True)
+        self.exercise(kill_launcher=True, keyboard=True, stale_lease=True)
 
     def test_group_term_during_cleanup_still_restores_brightness(self):
         self.exercise(kill_launcher=False, keyboard_exit=True, stop_during_cleanup=True)
@@ -44,6 +44,7 @@ class LifecycleTests(unittest.TestCase):
         keyboard_exit=False,
         brightness_reset=False,
         stop_during_cleanup=False,
+        stale_lease=False,
     ):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
@@ -148,6 +149,15 @@ class LifecycleTests(unittest.TestCase):
                     self.assertIsNone(client.poll())
                     client.kill()  # No EXIT trap can run.
                     client.wait(timeout=2)
+                    if stale_lease:
+                        # The terminal case covers the real ten-second expiry.
+                        # Here test keyboard-child cleanup on an expired lease,
+                        # without repeating that same wall-clock wait.
+                        try:
+                            os.killpg(client.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                        (runtime / "lease").write_text("0\n")
                 elif touch_exit:
                     # The real monitor starts only after stale requests are cleared.
                     # Brightness alone does not establish that startup has finished.

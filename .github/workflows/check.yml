@@ -33,9 +33,18 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y make shellcheck
       - name: Lint and test (no Qt)
         run: make check
+
+  qt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
       - name: Install pinned Qt for offscreen UI tests
         run: python -m pip install PySide6-Essentials==6.11.2 shiboken6==6.11.2
-      - name: Test with Qt
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: make test
+      - name: Test Qt interface only
+        run: make test-qt

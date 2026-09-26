@@ -611,14 +611,19 @@ are development-only tools, not extra Deck installation requirements.
 ```bash
 make fmt    # Fix Python lint/import issues and format Python + shell files
 make lint   # Check Ruff, formatting, ShellCheck, and Bash syntax; no source edits
-make test   # Run the Python unittest suite
+make test   # All test modules, in up to four isolated processes
 make check  # Lint + tests; also the default for plain make
+make test-lifecycle  # Focused shutdown/lease/brightness checks
+make test-qt         # Qt interface only; requires a working PySide6 runtime
 ```
 
 Ruff settings are in `ruff.toml`; shfmt uses two-space indentation and indented
-case branches. GitHub Actions runs `make check` on pushes, pull requests, and
-manual dispatches, currently with Python 3.11. Tools can be overridden locally,
-for example `make check PYTHON=python3.13`.
+case branches. GitHub Actions runs the no-Qt checks and pinned Qt interface tests
+as parallel jobs on pushes, pull requests, and manual dispatches, currently with
+Python 3.11. The Qt job does not repeat the core suite. Tools and concurrency can
+be overridden locally, for example `make check PYTHON=python3.13 TEST_JOBS=2`.
+Use `TEST_JOBS=1` for serial debugging. Each `tests/test_NAME.py` also has a focused
+`make test-NAME` target; failures from any parallel module fail the overall check.
 
 The Makefile pins Ruff and shfmt-py exactly so formatting is consistent. To
 upgrade, change their versions, run `make fmt` and `make check`, and review the
@@ -631,8 +636,12 @@ They do not install/start the real VHP service. Shortcut tests reject unmocked
 input and process launches; stdout/stderr is shown only on failure. For hardware
 changes, verify launch, client connection, the selected mode's quit control,
 brightness/terminal restoration, and forced-launcher cleanup on the Deck. Qt tests
-need a private PySide6 runtime and `QT_QPA_PLATFORM=offscreen`; without it they are explicitly
-skipped. Run both Qt-enabled and standard-library suites before shipping.
+need a private PySide6 runtime and `QT_QPA_PLATFORM=offscreen`; without it they are
+explicitly skipped. With Qt available, run `make check` once in that environment:
+it covers both core and GUI tests. If a no-Qt pass already succeeded, add only
+`make test-qt` with the Qt runtime available, not a second full suite. CI retains
+separate no-Qt coverage. Keep the real lease-expiry and hold-to-quit timing checks;
+no test requires a live Deck or a manual idle-observation harness.
 
 ## Credits and license
 
