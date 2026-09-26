@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))  # Discover imports tests/ as top-level; reach repo modules.
+sys.path.insert(0, str(ROOT / "src"))  # Discover imports tests/ as top-level; reach source modules.
 
 import vhp_ipc  # noqa: E402
 import vhp_keyboard  # noqa: E402
@@ -214,7 +214,7 @@ class ResponseTests(unittest.TestCase):
 
     def test_the_backend_status_shape_matches_the_response_schema(self):
         # Guards against the backend and the UI drifting apart.
-        source = (ROOT / "vhp_backend.py").read_text()
+        source = (ROOT / "src/vhp_backend.py").read_text()
         for field in vhp_ipc.RESPONSES["status"]:
             self.assertIn(f'"{field}":', source)
 

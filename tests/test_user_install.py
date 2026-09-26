@@ -28,6 +28,15 @@ TOOLS = (
 )
 
 
+def source_path(name):
+    """Checkout organization differs from the deliberately flat installed tree."""
+    if name in ("doctor.sh", "uninstall.sh"):
+        return Path(name)
+    if name in ("steam-shortcut.py", "vhp-gui-deps.py"):
+        return Path("tools") / name
+    return Path("src") / name
+
+
 class UserInstallTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -40,8 +49,11 @@ class UserInstallTests(unittest.TestCase):
         self.installed = self.home / ".local/share/VirtualHerePad"
         self.env = dict(os.environ, HOME=str(self.home), USER_ROOT=str(self.installed))
         for name in TOOLS:
-            shutil.copy2(ROOT / name, self.checkout / name)
-        shutil.copytree(ROOT / "konsole", self.checkout / "konsole")
+            relative = source_path(name)
+            destination = self.checkout / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / relative, destination)
+        shutil.copytree(ROOT / "packaging/konsole", self.checkout / "packaging/konsole")
 
     def install(self):
         source = (ROOT / "setup.sh").read_text()
@@ -60,7 +72,8 @@ class UserInstallTests(unittest.TestCase):
         self.install()
         for name in TOOLS:
             self.assertEqual(
-                (self.installed / name).read_bytes(), (self.checkout / name).read_bytes()
+                (self.installed / name).read_bytes(),
+                (self.checkout / source_path(name)).read_bytes(),
             )
         self.assertTrue(os.access(self.installed / "vhp.sh", os.X_OK))
         self.assertTrue(os.access(self.installed / "uninstall.sh", os.X_OK))
@@ -78,6 +91,31 @@ class UserInstallTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Steam account ready: 123", result.stdout)
 
+    def test_installed_layout_and_protocol_imports_without_checkout(self):
+        self.install()
+        shutil.rmtree(self.checkout)
+        result = subprocess.run(
+            [
+                "python3",
+                "-I",
+                "-c",
+                "import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); "
+                "import vhp_keyboard, vhp_ipc, vhp_dashboard; "
+                "assert 'zh-tw-zhuyin' in vhp_keyboard.CATALOG; "
+                "assert set(vhp_ipc.LAYOUTS) == set(vhp_keyboard.CATALOG); "
+                "assert all(Path(module.__file__).parent == Path(sys.argv[1]) "
+                "for module in (vhp_keyboard, vhp_ipc, vhp_dashboard))",
+                str(self.installed),
+            ],
+            cwd=self.root,
+            env=self.env,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_installed_launcher_works_without_checkout(self):
         mocks = self.root / "mock commands"
         mocks.mkdir()
@@ -90,7 +128,7 @@ class UserInstallTests(unittest.TestCase):
         systemctl = mocks / "systemctl"
         systemctl.write_text("#!/bin/bash\nexit 1\n")  # Mock an already stopped service.
         systemctl.chmod(0o755)
-        launcher = self.checkout / "vhp.sh"
+        launcher = self.checkout / "src/vhp.sh"
         launcher.write_text(
             launcher.read_text()
             .replace("/home/.vhp/bin/vhp-root", shlex.quote(str(helper)))
@@ -256,7 +294,7 @@ class UserInstallTests(unittest.TestCase):
         (self.installed / "vhp.sh").write_text("outdated launcher")
         self.install()
         self.assertEqual(
-            (self.installed / "vhp.sh").read_bytes(), (self.checkout / "vhp.sh").read_bytes()
+            (self.installed / "vhp.sh").read_bytes(), (self.checkout / "src/vhp.sh").read_bytes()
         )
         self.assertEqual(extra.read_text(), "keep")
 

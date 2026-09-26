@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))  # Discover imports tests/ as top-level; reach repo modules.
+sys.path.insert(0, str(ROOT / "src"))  # Discover imports tests/ as top-level; reach source modules.
 
 import vhp_backend  # noqa: E402
 import vhp_ipc  # noqa: E402

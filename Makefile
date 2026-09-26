@@ -9,7 +9,7 @@ RUFF_VERSION := 0.16.9
 SHFMT_PY_VERSION := 4.2.0
 RUFF = $(UVX) --from ruff==$(RUFF_VERSION) ruff
 SHFMT = $(UVX) --from shfmt-py==$(SHFMT_PY_VERSION) shfmt
-SHELL_FILES := $(wildcard *.sh) vhp-root
+SHELL_FILES := $(wildcard *.sh src/*.sh tools/*.sh) src/vhp-root
 
 .PHONY: fmt lint test check
 

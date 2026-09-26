@@ -67,7 +67,7 @@ class LifecycleTests(unittest.TestCase):
                 selection.mkdir()
                 (selection / "mode").write_text("keyboard\n")
             helper = folder / "helper"
-            source = (ROOT / "vhp-root").read_text()
+            source = (ROOT / "src/vhp-root").read_text()
             source = source.replace("[[ $EUID == 0 && $# == 1 ]]", "[[ $# == 1 ]]")
             source = source.replace("/run/vhp", str(runtime))
             source = source.replace("/sys/class/backlight/amdgpu_bl0/brightness", str(brightness))
@@ -89,7 +89,7 @@ class LifecycleTests(unittest.TestCase):
             systemctl.chmod(0o755)
             launcher = folder / "launcher"
             launcher.write_text(
-                (ROOT / "vhp.sh")
+                (ROOT / "src/vhp.sh")
                 .read_text()
                 .replace("/home/.vhp/bin/vhp-root", str(helper))
                 .replace("/usr/bin/systemctl", str(systemctl))

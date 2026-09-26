@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location(
-    "touch_stop", Path(__file__).resolve().parents[1] / "touch-stop.py"
+    "touch_stop", Path(__file__).resolve().parents[1] / "src/touch-stop.py"
 )
 touch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(touch)

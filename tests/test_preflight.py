@@ -57,7 +57,9 @@ class PreflightTests(unittest.TestCase):
 
     def test_helper_check_is_harmless(self):
         source = (
-            (ROOT / "vhp-root").read_text().replace("[[ $EUID == 0 && $# == 1 ]]", "[[ $# == 1 ]]")
+            (ROOT / "src/vhp-root")
+            .read_text()
+            .replace("[[ $EUID == 0 && $# == 1 ]]", "[[ $# == 1 ]]")
         )
         with tempfile.TemporaryDirectory() as directory:
             result = subprocess.run(

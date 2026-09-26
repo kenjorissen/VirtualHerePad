@@ -166,7 +166,7 @@ and logs. Use non-sensitive examples to reproduce problems.
 
 ## Data and maintenance
 
-`vhp_layouts.json` contains bundled legends plus source URLs and SHA-256 records.
+`src/vhp_layouts.json` contains bundled legends plus source URLs and SHA-256 records.
 `tools/build-layouts.py` reads the processing XML published by
 [kbdlayout.info](https://kbdlayout.info/), using stable Windows layout identifiers
 and the JIS `kbd106` table. It downloads **XML, not Windows DLLs**. These are
