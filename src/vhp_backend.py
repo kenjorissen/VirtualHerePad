@@ -255,7 +255,12 @@ class Backend:
                         else:
                             item.accept()[0].close()  # One UI at a time.
                     elif self.volume is not None and item == self.volume.source:
+                        previous_percent = self.brightness.percent
                         self.volume.process()
+                        if self.brightness.percent != previous_percent:
+                            # Publish once after this event batch, not on the next
+                            # periodic tick. Unchanged/clamped keys stay quiet.
+                            self.next_status = 0.0
                     elif self.connection is not None:
                         self.read(self.reader)
                 if not self.stopping:
