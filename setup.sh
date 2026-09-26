@@ -27,7 +27,7 @@ for option in "$@"; do
     --help | -h)
       echo 'Usage: ./setup.sh [--keyboard|--terminal] [--manual-download]'
       echo 'Fresh installs default to terminal mode (no Qt). Keyboard mode is opt-in and requires a VirtualHere license.'
-      echo 'Default: download from VirtualHere and verify its official SHA1SUM.'
+      echo 'Default: check the live official SHA1SUM; reuse a matching installed server or download and verify it.'
       echo 'Manual: use ~/Downloads/vhusbdx86_64 without downloading; verify it yourself first.'
       echo 'VHP_SERVER_PATH selects another local binary (also skips downloading).'
       echo 'Manual keyboard setup requires an existing Qt runtime or VHP_QT_PATH.'
@@ -134,6 +134,8 @@ done
 tmp=$(mktemp -d)
 trap 'rm -rf -- "$tmp"' EXIT
 # BEGIN SERVER_DOWNLOAD
+expected_sha1=not-verified
+verification_source=manual-unverified
 if [[ -n $server_path ]]; then
   echo 'Using local VirtualHere server (no downloads or upstream checksum verification).'
   [[ -f $server_path && -r $server_path ]] || {
@@ -142,21 +144,10 @@ if [[ -n $server_path ]]; then
   }
   cp -- "$server_path" "$tmp/vhusbdx86_64"
 else
-  echo 'Downloading VirtualHere server and official SHA1SUM over HTTPS.'
+  echo 'Checking the current official VirtualHere SHA1SUM over HTTPS.'
   curl --fail --location --proto '=https' --proto-redir '=https' \
     --retry 3 --connect-timeout 20 --max-time 180 --max-filesize 65536 \
     --output "$tmp/SHA1SUM" "$checksum_url"
-  curl --fail --location --proto '=https' --proto-redir '=https' \
-    --retry 3 --connect-timeout 20 --max-time 180 \
-    --output "$tmp/vhusbdx86_64" "$url"
-fi
-[[ -s "$tmp/vhusbdx86_64" ]] || {
-  echo 'Empty server file.' >&2
-  exit 1
-}
-expected_sha1=not-verified
-verification_source=manual-unverified
-if [[ -z $server_path ]]; then
   # Parse data only, select exactly one exact filename, and never trust manifest paths.
   expected_sha1=$(
     python3 -I - "$tmp/SHA1SUM" <<'VHP_CHECKSUM'
@@ -185,6 +176,25 @@ except (OSError, ValueError) as exc:
     sys.exit(1)
 VHP_CHECKSUM
   )
+  installed_server=/home/.vhp/bin/vhusbdx86_64
+  # Verify a private copy, not a file that could change between hashing and use.
+  # A missing, unreadable, or outdated installed binary falls back to download.
+  if [[ -f $installed_server && -r $installed_server && ! -L $installed_server ]] &&
+    cp -- "$installed_server" "$tmp/vhusbdx86_64" &&
+    printf '%s  %s\n' "$expected_sha1" "$tmp/vhusbdx86_64" | sha1sum --check --status -; then
+    echo 'Installed VirtualHere server matches the live checksum; reusing it without downloading the binary.'
+  else
+    echo 'Downloading the current VirtualHere server over HTTPS.'
+    curl --fail --location --proto '=https' --proto-redir '=https' \
+      --retry 3 --connect-timeout 20 --max-time 180 \
+      --output "$tmp/vhusbdx86_64" "$url"
+  fi
+fi
+[[ -s "$tmp/vhusbdx86_64" ]] || {
+  echo 'Empty server file.' >&2
+  exit 1
+}
+if [[ -z $server_path ]]; then
   if ! printf '%s  %s\n' "$expected_sha1" "$tmp/vhusbdx86_64" | sha1sum --check -; then
     echo 'VirtualHere checksum mismatch. Installation aborted; the running service is unchanged.' >&2
     echo 'Obtain the matching server and SHA1SUM directly from VirtualHere, then retry.' >&2

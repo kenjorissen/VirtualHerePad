@@ -92,7 +92,8 @@ Steam runs the installed `vhp-launch.sh --keyboard` or `vhp-launch.sh --terminal
 You do **not** need to run it separately during setup. Once the shortcut has
 been updated, the checkout can be moved or deleted without breaking normal use.
 
-Setup automatically downloads and verifies VirtualHere. To supply the file
+Setup checks VirtualHere's live checksum and reuses the installed server when
+it matches; otherwise it downloads and verifies a fresh copy. To supply the file
 instead, see [Manual server download](#manual-server-download).
 
 ### Selecting or switching interfaces
@@ -566,10 +567,13 @@ VirtualHere still runs as root for USB access. Root ownership is not a sandbox
 against server vulnerabilities. Use a trusted network; VHP does not configure
 firewall rules or server authentication.
 
-By default, setup downloads the generic x86-64 server and VirtualHere's official
+By default, setup fetches VirtualHere's current official
 [SHA1SUM](https://www.virtualhere.com/sites/default/files/usbserver/SHA1SUM) over
-HTTPS. It requires exactly one matching filename entry and a matching SHA-1
-before stopping the running service or installing files. Missing, malformed,
+HTTPS first. It checks a private copy of the installed generic x86-64 server
+against that live hash and reuses it if it matches, avoiding another binary
+download. Otherwise it downloads and verifies a fresh copy. It requires exactly
+one matching filename entry and a matching SHA-1 before stopping the running
+service or installing files. Missing, malformed,
 ambiguous, or mismatched checksums abort installation. SHA-1 is the publisher's
 available checksum, not a modern signature; this still trusts VirtualHere's
 HTTPS site. [Manual mode](#manual-server-download) explicitly leaves upstream

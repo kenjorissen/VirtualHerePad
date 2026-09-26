@@ -18,7 +18,9 @@ def block(name):
 
 
 class DownloadTests(unittest.TestCase):
-    def run_download(self, manifest=MANIFEST, payload=PAYLOAD, manual=False, sha256=None, fail=""):
+    def run_download(
+        self, manifest=MANIFEST, payload=PAYLOAD, manual=False, sha256=None, fail="", installed=None
+    ):
         with tempfile.TemporaryDirectory(prefix="vhp download ") as directory:
             root = Path(directory)
             incoming = root / "incoming"
@@ -27,6 +29,9 @@ class DownloadTests(unittest.TestCase):
             binary.write_bytes(payload)
             binary.chmod(0o600)
             (incoming / "SHA1SUM").write_bytes(manifest)
+            existing = root / "installed server"
+            if installed is not None:
+                existing.write_bytes(installed)
             work = root / "work"
             work.mkdir()
             mocks = root / "mocks"
@@ -55,6 +60,10 @@ class DownloadTests(unittest.TestCase):
             if sha256 is not None:
                 env["VHP_SHA256"] = sha256
             script = block("VIRTUALHERE_SOURCES") + block("SERVER_DOWNLOAD")
+            script = script.replace(
+                "installed_server=/home/.vhp/bin/vhusbdx86_64",
+                f"installed_server={str(existing)!r}",
+            )
             script += '\nprintf "PASSED:%s:%s\\n" "$verification_source" "$expected_sha1"\n'
             result = subprocess.run(
                 ["bash", "-euc", script],
@@ -66,6 +75,8 @@ class DownloadTests(unittest.TestCase):
             )
             calls = (root / "calls").read_text() if (root / "calls").exists() else ""
             self.assertEqual(binary.stat().st_mode & 0o777, 0o600)
+            if installed is not None:
+                self.assertEqual(existing.read_bytes(), installed, "Existing server was modified")
             return result, calls
 
     def test_default_downloads_both_files_over_https_and_verifies_vendor_checksum(self):
@@ -77,6 +88,44 @@ class DownloadTests(unittest.TestCase):
         self.assertIn("/vhusbdx86_64", calls)
         self.assertEqual(calls.count('"--proto", "=https"'), 2)
         self.assertEqual(calls.count('"--proto-redir", "=https"'), 2)
+
+    def test_matching_installed_server_fetches_only_live_manifest(self):
+        result, calls = self.run_download(installed=PAYLOAD, fail="vhusbdx86_64")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("reusing it without downloading the binary", result.stdout)
+        self.assertIn(f"PASSED:upstream-sha1:{SHA1}", result.stdout)
+        self.assertEqual(len(calls.splitlines()), 1)
+        self.assertIn("/SHA1SUM", calls)
+        self.assertNotIn("/vhusbdx86_64", calls)
+
+    def test_outdated_installed_server_downloads_and_verifies_replacement(self):
+        for installed in (b"old server", b""):
+            with self.subTest(installed=installed):
+                result, calls = self.run_download(installed=installed)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(len(calls.splitlines()), 2)
+                self.assertIn(f"PASSED:upstream-sha1:{SHA1}", result.stdout)
+
+    def test_existing_file_never_bypasses_live_manifest_failure(self):
+        for options in ({"fail": "SHA1SUM"}, {"manifest": b"invalid"}):
+            with self.subTest(options=options):
+                result, calls = self.run_download(installed=PAYLOAD, **options)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(len(calls.splitlines()), 1)
+                self.assertNotIn("PASSED:", result.stdout)
+
+    def test_failed_update_does_not_fall_back_to_outdated_existing_file(self):
+        result, calls = self.run_download(installed=b"old server", fail="vhusbdx86_64")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(len(calls.splitlines()), 2)
+        self.assertNotIn("PASSED:", result.stdout)
+
+    def test_reused_file_still_requires_optional_sha256(self):
+        for checksum in (SHA256, "0" * 64):
+            with self.subTest(checksum=checksum):
+                result, calls = self.run_download(installed=PAYLOAD, sha256=checksum)
+                self.assertEqual(result.returncode == 0, checksum == SHA256, result.stderr)
+                self.assertEqual(len(calls.splitlines()), 1)
 
     def test_accepts_uppercase_binary_marker_and_crlf(self):
         result, _ = self.run_download(manifest=f"{SHA1.upper()} *vhusbdx86_64\r\n".encode())
