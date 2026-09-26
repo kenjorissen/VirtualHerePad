@@ -51,6 +51,11 @@ class FakeBrightness:
         self.percent = percent
         self.changes = []
         self.saves = 0
+        self.checks = 0
+
+    def maintain(self):
+        self.checks += 1
+        return None
 
     def change(self, delta):
         self.changes.append(delta)
