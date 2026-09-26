@@ -98,7 +98,7 @@ def decode_response(line):
 def _parse(line, validator):
     try:
         message = json.loads(line)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
         raise ProtocolError("invalid JSON") from exc
     return validator(message)
 

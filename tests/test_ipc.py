@@ -1,6 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))  # Discover imports tests/ as top-level; reach source modules.
@@ -97,8 +98,17 @@ class EncodeDecodeTests(unittest.TestCase):
                     vhp_ipc.decode(line)
 
     def test_deeply_nested_json_is_rejected_rather_than_crashing(self):
-        with self.assertRaises(vhp_ipc.ProtocolError):
-            vhp_ipc.decode(b"[" * 2000 + b"]" * 2000)
+        for decode in (vhp_ipc.decode, vhp_ipc.decode_response):
+            with self.subTest(decode=decode.__name__), self.assertRaises(vhp_ipc.ProtocolError):
+                decode(b"[" * 2000 + b"]" * 2000)
+
+    def test_parser_recursion_errors_are_normalized_on_every_python_version(self):
+        # Some Python versions parse the deep fixture and then reject its shape;
+        # others raise while parsing. Cover that exception path deterministically.
+        with patch.object(vhp_ipc.json, "loads", side_effect=RecursionError):
+            for decode in (vhp_ipc.decode, vhp_ipc.decode_response):
+                with self.subTest(decode=decode.__name__), self.assertRaises(vhp_ipc.ProtocolError):
+                    decode(b"[]")
 
 
 class ReaderTests(unittest.TestCase):
