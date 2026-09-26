@@ -149,9 +149,11 @@ apply_brightness() {
 }
 
 maintain_brightness() {
-  local now=$1 current message
+  local now=$1 current='' message
   [[ -n ${brightness_target_raw:-} && ! -f /run/vhp/stopping ]] || return 0
-  if ! { current=$(<"$BRIGHTNESS_FILE"); } 2>/dev/null; then
+  # A failed $(<file) substitution can exit older Bash despite the conditional.
+  # Guard read explicitly, accepting a final numeric line without a newline too.
+  if ! { IFS= read -r current <"$BRIGHTNESS_FILE" || [[ -n $current ]]; } 2>/dev/null; then
     message='WARNING: brightness watcher could not read backlight.'
   elif [[ ! $current =~ ^[0-9]{1,9}$ ]]; then
     message='WARNING: brightness watcher read an invalid backlight value.'
