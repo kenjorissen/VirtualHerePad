@@ -18,13 +18,14 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
 try:
-    from PySide6.QtCore import QCoreApplication, QUrl, qInstallMessageHandler
+    from PySide6.QtCore import QCoreApplication, QPointF, Qt, QUrl, qInstallMessageHandler
     from PySide6.QtGui import QGuiApplication
     from PySide6.QtQml import QQmlApplicationEngine
 
     # Importing QtQuick registers the QQuickItem* converter that
     # QQuickWindow.contentItem needs; without it PySide6 raises.
     from PySide6.QtQuick import QQuickItem
+    from PySide6.QtTest import QTest
     from test_backend import Harness
 
     import vhp_keyboard
@@ -233,16 +234,68 @@ class QmlTests(QtTestCase):
 
             expected = sum(len(row) for row in vhp_keyboard.layout_grid("us"))
             self.assertEqual(len(rendered("keycap")), expected)
+            # Counting items is not enough: an undefined divisor once made every
+            # key zero-width, so a fully invisible keyboard still passed.
+            caps = rendered("keycap")
+            self.assertTrue(
+                all(item.width() > 0 for item in caps), "every keycap must have a real width"
+            )
+            self.assertTrue(
+                all(item.height() > 0 for item in caps), "every keycap must have a real height"
+            )
+            self.assertEqual(window.property("columns"), bridge.columns)
             labels = {item.property("text") for item in rendered("keycapLabel")}
             self.assertIn("a", labels)
             self.assertIn("Space", labels)
 
-            window.setProperty("keyboardOpen", True)
+            toggle = rendered("keyboardToggle")[0]
+            position = toggle.mapToScene(QPointF(toggle.width() / 2, toggle.height() / 2)).toPoint()
+            QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, position)
             self.assertTrue(rendered("keypad")[0].property("visible"))
             self.assertEqual(len(rendered("keycap")), expected)
 
-            window.setProperty("keyboardOpen", False)
+            QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, position)
             self.assertFalse(rendered("keypad")[0].property("visible"))
+
+    def test_quit_requires_an_uninterrupted_two_second_hold(self):
+        with Harness() as harness:
+            bridge = self.bridge_for(harness)
+            engine = QQmlApplicationEngine()
+            engine.setInitialProperties({"vhp": bridge})
+            engine.load(QUrl.fromLocalFile(str(ROOT / "vhp_ui.qml")))
+            window = engine.rootObjects()[0]
+            # Observe the quit request without quitting the shared test application.
+            engine.quit.disconnect()
+            quits = []
+            engine.quit.connect(lambda: quits.append(True))
+            self.assertTrue(pump(3, lambda: bridge.shared))
+            button = next(
+                item for item in walk(window.contentItem()) if item.objectName() == "holdQuit"
+            )
+            position = button.mapToScene(QPointF(button.width() / 2, button.height() / 2)).toPoint()
+            self.assertEqual(button.property("holdMilliseconds"), 2000)
+
+            QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, position)
+            pump(2.2)
+            self.assertEqual(quits, [])
+            self.assertTrue(harness.thread.is_alive())
+
+            QTest.mousePress(window, Qt.LeftButton, Qt.NoModifier, position)
+            pump(0.3)
+            outside = button.mapToScene(QPointF(-20, button.height() / 2)).toPoint()
+            QTest.mouseMove(window, outside)
+            pump(2.2)
+            self.assertEqual(quits, [])
+            QTest.mouseRelease(window, Qt.LeftButton, Qt.NoModifier, outside)
+
+            QTest.mousePress(window, Qt.LeftButton, Qt.NoModifier, position)
+            pump(1)
+            self.assertEqual(quits, [])
+            self.assertTrue(pump(2, lambda: bool(quits)))
+            self.assertEqual(quits, [True])
+            QTest.mouseRelease(window, Qt.LeftButton, Qt.NoModifier, position)
+            harness.thread.join(timeout=3)
+            self.assertFalse(harness.thread.is_alive())
 
     def test_qml_declares_the_bridge_as_a_required_property(self):
         # Context properties are cleared before the object tree is destroyed,

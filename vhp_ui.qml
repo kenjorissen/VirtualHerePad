@@ -12,6 +12,10 @@ Window {
     title: "VirtualHerePad"
 
     property bool keyboardOpen: false
+    // Mirrors vhp.columns. Declared here so both the hit-testing maths and the
+    // key widths use one name; an undefined divisor silently made every key zero
+    // wide, which drew a correctly-counted, completely invisible keyboard.
+    readonly property int columns: vhp.columns
 
     // Exact touch maths: map a point to the key that owns its grid cell. This
     // mirrors vhp_keyboard.layout_grid, where every row spans `columns` cells.
@@ -59,6 +63,79 @@ Window {
         }
     }
 
+    component HoldButton: Rectangle {
+        id: hold
+        property string text: ""
+        property int holdMilliseconds: 2000
+        property real progress: 0
+        signal held
+
+        function cancelHold() {
+            fill.stop();
+            hold.progress = 0;
+            holdTimer.stop();
+        }
+
+        Connections {
+            target: window
+            function onActiveChanged() {
+                if (!window.active) hold.cancelHold();
+            }
+        }
+
+        radius: height * 0.22
+        color: "#1b1214"
+        border.color: holdArea.pressed ? "#e06c6c" : "#7a3030"
+        border.width: 2
+        clip: true
+
+        NumberAnimation {
+            id: fill
+            target: hold
+            property: "progress"
+            from: 0
+            to: 1
+            duration: hold.holdMilliseconds
+        }
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: hold.width * hold.progress
+            color: "#a13333"
+        }
+
+        Text {
+            anchors.centerIn: parent
+            text: holdArea.pressed ? "KEEP HOLDING" : hold.text
+            color: "#f6e7e7"
+            font.bold: true
+            font.pixelSize: Math.max(12, hold.height * 0.28)
+        }
+
+        MouseArea {
+            id: holdArea
+            anchors.fill: parent
+            onPressed: {
+                hold.progress = 0;
+                fill.restart();
+                holdTimer.restart();
+            }
+            onReleased: hold.cancelHold()
+            onCanceled: hold.cancelHold()
+            onExited: hold.cancelHold()
+        }
+
+        Timer {
+            id: holdTimer
+            interval: hold.holdMilliseconds
+            onTriggered: {
+                if (holdArea.pressed && holdArea.containsMouse) hold.held();
+            }
+        }
+    }
+
     Item {
         id: topBar
         anchors.top: parent.top
@@ -68,6 +145,7 @@ Window {
 
         FlatButton {
             id: toggleButton
+            objectName: "keyboardToggle"
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.verticalCenter: parent.verticalCenter
             width: Math.min(parent.width * 0.36, 420)
@@ -78,22 +156,31 @@ Window {
         }
 
         Text {
+            id: statusText
             anchors.left: parent.left
             anchors.leftMargin: 16
             anchors.verticalCenter: parent.verticalCenter
-            color: vhp.shared ? "#43d17a" : "#c9a227"
-            font.pixelSize: Math.max(14, topBar.height * 0.24)
+            width: Math.max(0, toggleButton.x - 32)
+            elide: Text.ElideRight
+            color: vhp.shared ? "#43d17a" : (vhp.connected ? "#c9a227" : "#c05a5a")
+            font.pixelSize: Math.max(13, topBar.height * 0.22)
             font.bold: true
             text: vhp.connected ? (vhp.shared ? "PC KEYBOARD ACTIVE" : "WAITING FOR PC") : "BACKEND OFFLINE"
         }
 
-        Text {
+        HoldButton {
+            id: quitButton
+            objectName: "holdQuit"
             anchors.right: parent.right
             anchors.rightMargin: 16
             anchors.verticalCenter: parent.verticalCenter
-            color: vhp.connected ? "#8fb4d0" : "#c05a5a"
-            font.pixelSize: Math.max(13, topBar.height * 0.2)
-            text: "Brightness " + vhp.percent + "%   " + vhp.layoutName
+            width: Math.min(parent.width * 0.22, 220)
+            height: parent.height * 0.68
+            text: "HOLD 2s TO QUIT"
+            onHeld: {
+                vhp.stop();
+                Qt.quit();
+            }
         }
     }
 
@@ -123,7 +210,7 @@ Window {
 
                     delegate: Item {
                         required property var modelData
-                        width: keypad.width * modelData.span / window.columns
+                        width: keypad.width * modelData.span / Math.max(1, window.columns)
                         height: keyRow.height
 
                         Rectangle {
@@ -205,10 +292,20 @@ Window {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         height: Math.max(62, window.height * 0.11)
-        visible: !window.keyboardOpen
+
+        Text {
+            anchors.left: parent.left
+            anchors.leftMargin: 16
+            anchors.verticalCenter: parent.verticalCenter
+            color: vhp.connected ? "#8fb4d0" : "#c05a5a"
+            font.pixelSize: Math.max(13, bottomBar.height * 0.22)
+            text: "Brightness " + vhp.percent + "%"
+        }
 
         Row {
-            anchors.centerIn: parent
+            anchors.right: parent.right
+            anchors.rightMargin: 16
+            anchors.verticalCenter: parent.verticalCenter
             spacing: 10
 
             Repeater {
@@ -216,8 +313,8 @@ Window {
 
                 delegate: FlatButton {
                     height: bottomBar.height * 0.66
-                    width: Math.max(96, bottomBar.width * 0.13)
-                    highlighted: modelData.id === vhp.layoutName ? true : false
+                    width: bottomBar.width * 0.13
+                    highlighted: modelData.id === vhp.layout
                     text: modelData.label
                     onTapped: vhp.setLayout(modelData.id)
                 }
@@ -225,17 +322,11 @@ Window {
 
             FlatButton {
                 height: bottomBar.height * 0.66
-                width: Math.max(96, bottomBar.width * 0.13)
+                width: bottomBar.width * 0.17
                 text: "RELEASE KEYS"
                 onTapped: vhp.clear()
             }
 
-            FlatButton {
-                height: bottomBar.height * 0.66
-                width: Math.max(96, bottomBar.width * 0.13)
-                text: "STOP VHP"
-                onTapped: vhp.stop()
-            }
         }
     }
 }
