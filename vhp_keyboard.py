@@ -1,7 +1,18 @@
-"""USB HID key state and initial PC keyboard layouts (no GUI dependencies)."""
+"""USB HID state and bundled, sourced layout/IME legends (no GUI dependencies)."""
 
-LAYOUT_NAMES = {"us": "English (US)", "uk": "English (UK)", "de": "Deutsch", "fr": "Français"}
-ALLOWED_KEYS = set(range(4, 70)) | {76, 79, 80, 81, 82, 100} | set(range(224, 232))
+import json
+from pathlib import Path
+
+_DATA = json.loads(Path(__file__).with_name("vhp_layouts.json").read_text(encoding="utf-8"))
+CATALOG = {
+    identity: {**entry, "keys": _DATA["mappings"][entry["mapping"]]}
+    for identity, entry in _DATA["layouts"].items()
+}
+LAYOUT_NAMES = {identity: entry["name"] for identity, entry in CATALOG.items()}
+INTERNATIONAL_KEYS = {135, 136, 137, 138, 139, 144, 145}
+ALLOWED_KEYS = (
+    set(range(4, 70)) | {76, 79, 80, 81, 82, 100} | INTERNATIONAL_KEYS | set(range(224, 232))
+)
 
 
 class KeyState:
@@ -30,95 +41,12 @@ class KeyState:
 
 
 def layout_rows(layout):
-    """Labels describe the matching PC layout; reports always contain HID usages."""
-    if layout not in LAYOUT_NAMES:
+    """Legends only: the PC still chooses output, composition and candidate text."""
+    if layout not in CATALOG:
         raise ValueError("Unknown keyboard layout")
-    labels = {code: (chr(code + 93), chr(code + 61), "") for code in range(4, 30)}
-    for code, normal, shifted in zip(range(30, 40), "1234567890", "!@#$%^&*()"):
-        labels[code] = (normal, shifted, "")
-    labels.update(
-        {
-            45: ("-", "_", ""),
-            46: ("=", "+", ""),
-            47: ("[", "{", ""),
-            48: ("]", "}", ""),
-            49: ("\\", "|", ""),
-            50: ("#", "~", ""),
-            51: (";", ":", ""),
-            52: ("'", '"', ""),
-            53: ("`", "~", ""),
-            54: (",", "<", ""),
-            55: (".", ">", ""),
-            56: ("/", "?", ""),
-            100: ("\\", "|", ""),
-        }
-    )
-    if layout == "uk":
-        labels.update(
-            {31: ("2", '"', ""), 32: ("3", "£", ""), 52: ("'", "@", ""), 53: ("`", "¬", "¦")}
-        )
-    elif layout == "de":
-        labels.update(
-            {
-                28: ("z", "Z", ""),
-                29: ("y", "Y", ""),
-                31: ("2", '"', "²"),
-                32: ("3", "§", "³"),
-                35: ("6", "&", ""),
-                36: ("7", "/", "{"),
-                37: ("8", "(", "["),
-                38: ("9", ")", "]"),
-                39: ("0", "=", "}"),
-                45: ("ß", "?", "\\"),
-                46: ("´", "`", ""),
-                47: ("ü", "Ü", ""),
-                48: ("+", "*", "~"),
-                50: ("#", "'", ""),
-                51: ("ö", "Ö", ""),
-                52: ("ä", "Ä", ""),
-                53: ("^", "°", ""),
-                54: (",", ";", ""),
-                55: (".", ":", ""),
-                56: ("-", "_", ""),
-                100: ("<", ">", "|"),
-                8: ("e", "E", "€"),
-                20: ("q", "Q", "@"),
-                16: ("m", "M", "µ"),
-            }
-        )
-    elif layout == "fr":
-        labels.update(
-            {
-                4: ("q", "Q", ""),
-                20: ("a", "A", ""),
-                26: ("z", "Z", ""),
-                29: ("w", "W", ""),
-                8: ("e", "E", "€"),
-                30: ("&", "1", ""),
-                31: ("é", "2", "~"),
-                32: ('"', "3", "#"),
-                33: ("'", "4", "{"),
-                34: ("(", "5", "["),
-                35: ("-", "6", "|"),
-                36: ("è", "7", "`"),
-                37: ("_", "8", "\\"),
-                38: ("ç", "9", "^"),
-                39: ("à", "0", "@"),
-                45: (")", "°", "]"),
-                46: ("=", "+", "}"),
-                47: ("^", "¨", ""),
-                48: ("$", "£", "¤"),
-                50: ("*", "µ", ""),
-                51: ("m", "M", ""),
-                52: ("ù", "%", ""),
-                53: ("²", "", ""),
-                16: (",", "?", ""),
-                54: (";", ".", ""),
-                55: (":", "/", ""),
-                56: ("!", "§", ""),
-                100: ("<", ">", ""),
-            }
-        )
+    entry = CATALOG[layout]
+    geometry = entry["geometry"]
+    labels = entry["keys"]
     special = {
         40: "Enter",
         41: "Esc",
@@ -138,28 +66,71 @@ def layout_rows(layout):
         228: "Ctrl",
         229: "Shift",
         230: "AltGr",
+        136: "かな",
+        138: "変換",
+        139: "無変換",
+        144: "한/영",
+        145: "한자",
     }
     special.update({code: f"F{code - 57}" for code in range(58, 70)})
+    if geometry == "korean-104":
+        special.update({230: "한/영", 228: "한자"})
+    iso = geometry in ("iso", "abnt2")
     codes = [
-        [53, *range(30, 40), 45, 46, 42],
-        [43, 20, 26, 8, 21, 23, 28, 24, 12, 18, 19, 47, 48, 49 if layout == "us" else 50],
+        [53, *range(30, 40), 45, 46, *([137] if geometry == "jis" else []), 42],
+        [43, 20, 26, 8, 21, 23, 28, 24, 12, 18, 19, 47, 48, 50 if iso or geometry == "jis" else 49],
         [57, 4, 22, 7, 9, 10, 11, 13, 14, 15, 51, 52, 40],
-        [225, *([] if layout == "us" else [100]), 29, 27, 6, 25, 5, 17, 16, 54, 55, 56, 229],
-        [224, 227, 226, 230, 44, 80, 81, 82, 79, 228],
+        [
+            225,
+            *([100] if iso else []),
+            29,
+            27,
+            6,
+            25,
+            5,
+            17,
+            16,
+            54,
+            55,
+            56,
+            *([135] if geometry in ("abnt2", "jis") else []),
+            229,
+        ],
+        [
+            224,
+            227,
+            226,
+            230,
+            *([139] if geometry == "jis" else []),
+            44,
+            *([138, 136] if geometry == "jis" else []),
+            *([144, 145] if geometry == "korean" else []),
+            80,
+            81,
+            82,
+            79,
+            228,
+        ],
         [41, *range(58, 70)],
     ]
     rows = []
     for row in codes:
         keys = []
         for code in row:
-            normal, shift, altgr = labels.get(code, (special.get(code, "?"), "", ""))
+            if str(code) not in labels and code not in special:
+                raise ValueError(f"Missing legend for {layout}: HID {code}")
+            legend = labels.get(str(code), {"labels": [special.get(code, "?")] * 8, "dead": 0})
+            normal, shift, altgr = legend["labels"][:3]
             weight = 5 if code == 44 else 1.6 if code in (40, 42, 57, 225, 229) else 1
             keys.append(
                 {
                     "code": code,
                     "normal": normal,
-                    "shift": shift or normal,
-                    "altgr": altgr,
+                    "shift": shift,
+                    "altgr": altgr if str(code) in labels else "",
+                    "labels": legend["labels"],
+                    "dead": legend["dead"],
+                    "overlay": entry.get("overlays", {}).get(str(code), []),
                     "weight": weight,
                     "letter": len(normal) == len(shift) == 1
                     and normal.isalpha()
@@ -221,16 +192,16 @@ class TouchKeys:
     def label(self, key):
         """The character this key would produce right now, for display only.
 
-        The PC's own layout decides what is actually typed; this is a preview.
-        Shift+AltGr combinations are not modelled.
+        The PC's own layout/IME decides actual output. Caps is local tracking,
+        not a query of the PC's state. Secondary IME legends are reminders only.
         """
-        if self.altgr_active and key["altgr"]:
-            return key["altgr"]
-        if self.shift_active:
-            return key["shift"]
-        if self.caps and key["letter"]:
-            return key["shift"]
-        return key["normal"]
+        index = int(self.shift_active) | (int(self.altgr_active) << 1) | (int(self.caps) << 2)
+        label = key["labels"][index] or "—"
+        if key["dead"] & (1 << index):
+            label += "◌"
+        if key["overlay"] and not self.altgr_active:
+            label += "\n" + key["overlay"][int(self.shift_active)]
+        return label
 
     def decorated(self, key):
         return {

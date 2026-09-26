@@ -85,8 +85,10 @@ class LayoutTests(unittest.TestCase):
                     for key in row:
                         self.assertIn(key["code"], vhp_keyboard.ALLOWED_KEYS)
                         self.assertGreater(key["weight"], 0)
-                        for field in ("normal", "shift"):
-                            self.assertTrue(key[field], key)
+                        self.assertTrue(key["normal"], key)
+                        self.assertEqual(len(key["labels"]), 8)
+                        self.assertTrue(all(isinstance(label, str) for label in key["labels"]))
+                        self.assertTrue(vhp_keyboard.TouchKeys().label(key))
 
     def test_layouts_share_modifiers_but_differ_where_expected(self):
         us, de = (vhp_keyboard.layout_rows(name) for name in ("us", "de"))
@@ -124,7 +126,7 @@ class LayoutTests(unittest.TestCase):
 
     def test_unknown_layout_is_rejected(self):
         with self.assertRaises(ValueError):
-            vhp_keyboard.layout_rows("us-dvorak")
+            vhp_keyboard.layout_rows("not-a-layout")
 
 
 class GridTests(unittest.TestCase):
@@ -249,7 +251,10 @@ class BrightnessTests(unittest.TestCase):
 class ReportDescriptorTests(unittest.TestCase):
     def test_descriptor_is_the_standard_eight_byte_boot_keyboard(self):
         descriptor = vhp_hardware.REPORT_DESCRIPTOR
-        self.assertEqual(len(descriptor), 63)
+        self.assertEqual(len(descriptor), 64)
+        # Unsigned logical max 0x91 needs a two-byte item; LANG2 is the last
+        # supported array usage. Report shape remains the same eight bytes.
+        self.assertIn(bytes.fromhex("1500269100050719002991"), descriptor)
         self.assertEqual(descriptor[:4], bytes([0x05, 0x01, 0x09, 0x06]))
         self.assertTrue(descriptor.endswith(bytes([0x81, 0x00, 0xC0])))
         # Exactly one 8-bit input array of six keycodes: 1 + 1 + 6 = 8 byte reports.
@@ -350,7 +355,11 @@ class TouchKeyTests(unittest.TestCase):
         keys.release(8)
         keys.press(57)  # caps on
         self.assertEqual(keys.label(flat["a"]), "A")
-        self.assertEqual(keys.label(one), "1")  # caps never shifts digits
+        # Windows German uses Shift Lock on this key, unlike the US layout.
+        self.assertEqual(keys.label(one), "!")
+        keys.press(225)
+        self.assertEqual(keys.label(flat["a"]), "a")
+        self.assertEqual(keys.label(one), "1")
 
     def test_decorated_keys_carry_a_label_and_active_flag(self):
         keys = self.keys()

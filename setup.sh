@@ -257,7 +257,7 @@ for directory in "$base" "$base/bin" "$data"; do
     fi
   fi
 done
-for config in "$base/config.ini" "$data/config.ini" "$data/brightness-percent"; do
+for config in "$base/config.ini" "$data/config.ini" "$data/brightness-percent" "$data/keyboard-layout"; do
   if [[ -L "$config" ]]; then
     echo "Refusing symlinked config: $config" >&2
     exit 1
@@ -284,7 +284,7 @@ VHP_DATA_SETUP
 sudo install -o root -g root -m 755 "$tmp/vhusbdx86_64" /home/.vhp/bin/vhusbdx86_64
 sudo install -o root -g root -m 755 vhp-root /home/.vhp/bin/vhp-root
 sudo install -o root -g root -m 644 touch-stop.py /home/.vhp/bin/touch-stop.py
-sudo install -o root -g root -m 644 vhp_backend.py vhp_hardware.py vhp_keyboard.py vhp_ipc.py /home/.vhp/bin/
+sudo install -o root -g root -m 644 vhp_backend.py vhp_hardware.py vhp_keyboard.py vhp_layouts.json vhp_ipc.py /home/.vhp/bin/
 id -u >"$tmp/owner-uid"
 sudo install -o root -g root -m 600 "$tmp/owner-uid" /home/.vhp/bin/owner-uid
 sudo install -o root -g root -m 644 "$tmp/build-info.txt" /home/.vhp/bin/build-info.txt
@@ -307,7 +307,7 @@ fi
 install -d -m 755 "$USER_ROOT"
 install -m 755 vhp.sh vhp-gui.sh vhp-launch.sh doctor.sh uninstall.sh "$USER_ROOT/"
 install -m 644 steam-shortcut.py vhp_session.py vhp_qt.py vhp_ui.py vhp_ui.qml \
-  vhp_keyboard.py vhp_ipc.py vhp_dashboard.py vhp-gui-deps.py "$USER_ROOT/"
+  vhp_keyboard.py vhp_layouts.json vhp_ipc.py vhp_dashboard.py vhp-gui-deps.py "$USER_ROOT/"
 printf '%s\n' "${mode:-terminal}" >"$USER_ROOT/launch-mode"
 if [[ -n ${qt_source:-} && $qt_source != "$USER_ROOT/pylib" ]]; then
   # Staging was validated before privileged installation; replacement is rollback-safe.

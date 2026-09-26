@@ -132,11 +132,42 @@ class UiBackendTests(QtTestCase):
             bridge = self.bridge_for(harness)
             self.assertTrue(pump(3, lambda: bridge.shared))
             bridge.setLayout("de")
-            self.assertEqual(bridge.layoutName, "Deutsch")
+            self.assertEqual(bridge.layoutName, "German / Deutsch — QWERTZ")
             labels = [key["label"] for row in bridge.rows for key in row]
             self.assertIn("ö", labels)
             self.assertIn("z", labels)
             self.assertTrue(pump(3, lambda: harness.backend.layout == "de"))
+
+    def test_clear_and_layout_changes_preserve_locally_tracked_caps(self):
+        with Harness() as harness:
+            bridge = self.bridge_for(harness)
+            self.assertTrue(pump(3, lambda: bridge.shared))
+            bridge.press(57)
+            self.assertTrue(bridge.capsActive)
+            bridge.clear()
+            self.assertTrue(bridge.capsActive)
+            bridge.setLayout("fr")
+            self.assertTrue(bridge.capsActive)
+
+    def test_korean_type1_ime_buttons_do_not_latch_as_modifiers(self):
+        import select
+
+        with Harness() as harness:
+            bridge = self.bridge_for(harness)
+            self.assertTrue(pump(3, lambda: bridge.shared))
+            bridge.setLayout("ko-104")
+            self.assertTrue(pump(3, lambda: harness.backend.layout == "ko-104"))
+            pump(0.1)
+            while select.select([harness.gadget.read_fd], [], [], 0)[0]:
+                os.read(harness.gadget.read_fd, 4096)
+            bridge.press(230)
+            bridge.release(230)
+            self.assertEqual(
+                harness.gadget.reports(2), [bytes([64, 0, 0, 0, 0, 0, 0, 0]), bytes(8)]
+            )
+            self.assertFalse(bridge.altgrActive)
+            bridge.press(4)
+            self.assertEqual(harness.gadget.reports(1), [KEY_A])
 
     def test_clear_releases_held_keys_and_resets_modifiers(self):
         with Harness() as harness:
@@ -163,7 +194,8 @@ class UiBackendTests(QtTestCase):
         with Harness() as harness:
             bridge = self.bridge_for(harness)
             names = [entry["id"] for entry in bridge.layoutNames]
-            self.assertEqual(names, ["us", "uk", "de", "fr"])
+            self.assertEqual(names, list(vhp_keyboard.LAYOUT_NAMES))
+            self.assertGreaterEqual(len(names), 50)
             self.assertEqual(bridge.columns, 1000)
 
     def test_every_row_and_span_is_exposed_to_qml(self):
@@ -205,6 +237,8 @@ class QmlTests(QtTestCase):
             or "ReferenceError" in message
             or "is not defined" in message
             or "Unable to assign" in message
+            or "Cannot anchor" in message
+            or "Required property" in message
         ]
         self.assertEqual(problems, [])
         self.assertTrue(roots)
@@ -299,6 +333,98 @@ class QmlTests(QtTestCase):
             pump(0.1)
             self.assertEqual(harness.gadget.reports(1), [bytes(8)])
             sequence.release(0, position, window).commit()
+
+    def test_layout_chooser_opens_filters_scrolls_selects_and_closes(self):
+        with Harness() as harness:
+            bridge = self.bridge_for(harness)
+            engine = QQmlApplicationEngine()
+            engine.setInitialProperties({"vhp": bridge})
+            engine.load(QUrl.fromLocalFile(str(ROOT / "vhp_ui.qml")))
+            window = engine.rootObjects()[0]
+            self.assertTrue(pump(3, lambda: bridge.shared))
+
+            def item(name):
+                return next(
+                    child for child in walk(window.contentItem()) if child.objectName() == name
+                )
+
+            def click(target):
+                position = target.mapToScene(
+                    QPointF(target.width() / 2, target.height() / 2)
+                ).toPoint()
+                QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, position)
+                pump(0.1)
+
+            self.assertFalse(item("layoutChooser").isVisible())
+            self.assertFalse(
+                any(
+                    child.objectName().startswith("layoutChoice-")
+                    for child in walk(window.contentItem())
+                )
+            )
+            click(item("layoutButton"))
+            self.assertTrue(item("layoutChooser").isVisible())
+            choices = [
+                child
+                for child in walk(window.contentItem())
+                if child.objectName().startswith("layoutChoice-")
+            ]
+            self.assertEqual(len(choices), len(vhp_keyboard.CATALOG))
+            self.assertTrue(all(child.width() > 100 and child.height() > 40 for child in choices))
+            self.assertGreater(
+                item("layoutList").property("contentHeight"), item("layoutList").height()
+            )
+            click(item("layoutSearch"))
+            QTest.keyClick(window, Qt.Key_Z)
+            QTest.keyClick(window, Qt.Key_H)
+            pump(0.1)
+            self.assertEqual(window.property("layoutFilter"), "zh")
+            choices = [
+                child
+                for child in walk(window.contentItem())
+                if child.objectName().startswith("layoutChoice-")
+            ]
+            self.assertGreaterEqual(len(choices), 10)
+            self.assertTrue(
+                all(child.objectName().startswith("layoutChoice-zh") for child in choices)
+            )
+            target = item("layoutChoice-zh-jyutping")
+            listing = item("layoutList")
+            listing.setProperty(
+                "contentY",
+                max(0, min(target.y(), listing.property("contentHeight") - listing.height())),
+            )
+            pump(0.1)
+            click(target)
+            self.assertTrue(pump(3, lambda: harness.backend.layout == "zh-jyutping"))
+            self.assertEqual(bridge.layout, "zh-jyutping")
+            self.assertIn("PC", item("layoutDetails").property("text"))
+            click(item("layoutDone"))
+            self.assertFalse(item("layoutChooser").isVisible())
+
+    def test_all_catalog_layouts_have_real_key_geometry_when_open(self):
+        with Harness() as harness:
+            bridge = self.bridge_for(harness)
+            engine = QQmlApplicationEngine()
+            engine.setInitialProperties({"vhp": bridge})
+            engine.load(QUrl.fromLocalFile(str(ROOT / "vhp_ui.qml")))
+            window = engine.rootObjects()[0]
+            self.assertTrue(pump(3, lambda: bridge.shared))
+            window.setProperty("keyboardOpen", True)
+            for layout in vhp_keyboard.CATALOG:
+                with self.subTest(layout=layout):
+                    bridge.setLayout(layout)
+                    self.assertTrue(pump(3, lambda: harness.backend.layout == layout))
+                    pump(0.02)
+                    caps = [
+                        child
+                        for child in walk(window.contentItem())
+                        if child.objectName() == "keycap"
+                    ]
+                    self.assertEqual(
+                        len(caps), sum(len(row) for row in vhp_keyboard.layout_rows(layout))
+                    )
+                    self.assertTrue(all(child.width() > 0 and child.height() > 0 for child in caps))
 
     def test_quit_requires_an_uninterrupted_two_second_hold(self):
         with Harness() as harness:

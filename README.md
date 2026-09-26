@@ -173,20 +173,26 @@ If the server doesn't appear, see [Connection troubleshooting](#connection-troub
 ### Touch keyboard and dashboard
 
 The graphical interface opens on a clock/battery/network dashboard. Tap the
-**top-center KEYBOARD** button to show/hide the keyboard. Layout selection and
-**HOLD 2s TO QUIT** remain available in both states. The quit button fills while
+**top-center KEYBOARD** button to show/hide the keyboard. A small **Layout: …**
+control opens a scrollable/filterable chooser instead of a permanent row of
+language buttons. Its selection is remembered across sessions. The layout control
+and **HOLD 2s TO QUIT** remain available in both states. The quit button fills while
 held; releasing early, sliding off, or losing focus cancels the hold.
 
 - Use the Deck's **Volume Up/Down** buttons to adjust brightness by one step;
   repeat works while held. Other keys on the local AT keyboard are forwarded
   through a replacement input device. If safe discovery/grabbing fails, VHP logs
   a warning and leaves the physical keyboard alone.
-- Choose **US, UK, German, or French** to match the active layout on the PC.
-  These are USB key positions, not Unicode injection. IME composition remains on
-  the PC; VHP cannot discover or change the PC's selected layout.
+- Choose the **exact layout/variant or IME profile** matching your PC. The catalog
+  includes regional variants and separate Simplified/Traditional Chinese, Japanese,
+  and Korean profiles; familiar names share mappings where appropriate.
+  **Selection changes Deck legends, not the PC's settings.** There is no automatic
+  layout detection or Unicode injection. IME composition/candidates stay on the PC.
+  See [layouts, coverage, limitations and bug reports](docs/keyboard-layouts.md).
 - Shift/AltGr can be tapped for the next key; Ctrl/Alt/Super latch until tapped
   again. **RELEASE KEYS**, hiding the keyboard, or losing focus clears local
-  key/modifier state. Caps Lock indication tracks VHP taps, not the PC's LED state.
+  held/latched key state. Caps Lock indication tracks VHP taps, not the PC's LED
+  state; clearing keys does not toggle Caps Lock.
 - Remote typing requires VirtualHere's `usbfs` ownership of the gadget interface.
   Ownership is rechecked at each report write; the check and kernel ownership
   change are not atomic. Do not treat this as a security boundary against a
@@ -197,6 +203,13 @@ terminal command. Closing/crashing the UI ends the backend; backend failure,
 corner exit, and heartbeat expiry stop the whole service. `vhp-gui-sandbox.sh`
 is only a compatibility alias for the installed launcher, not an installer or
 root-checkout runner.
+
+**Coverage is not a promise of exhaustive testing.** Layout legends are based on
+published Windows tables; Linux/macOS mappings and IMEs can differ. I want to
+support everyone's layout, but cannot personally test every keyboard, OS, and
+input method. **Bug reports, corrections, and successful-configuration reports
+are welcome**—please follow the [reporting checklist](docs/keyboard-layouts.md#reporting-a-problem-or-requesting-a-variant)
+and do not include passwords or private license/config data.
 
 ### Terminal dashboard and shared controls
 
@@ -356,7 +369,7 @@ git pull
 ```
 
 Setup stops the current instance and replaces installed code and user tools.
-**Existing config/license and brightness preferences are preserved.** It does
+**Existing config/license, brightness preference, and saved keyboard layout are preserved.** It does
 not start VHP or enable it at boot. If you deleted the checkout, clone it again
 and run setup.
 
@@ -376,7 +389,7 @@ Run as your normal user, not with `sudo`, from any directory:
 
 This stops the service and removes installed programs, private Qt runtime, and the sudo rule.
 **Settings stay in `/home/.vhp/data`**, including `config.ini` and
-`brightness-percent`; nothing is moved to your user home. Remove the non-Steam
+`brightness-percent` and `keyboard-layout`; nothing is moved to your user home. Remove the non-Steam
 shortcut manually in Steam. The checkout and other old local files are untouched.
 The checkout's `./uninstall.sh` also works.
 
@@ -464,7 +477,7 @@ name. User tools install under `.local/share/VirtualHerePad` in that home, not
 | --- | --- |
 | `~/.local/share/VirtualHerePad` | User-owned launcher, diagnostics, shortcut helper, and uninstaller |
 | `/home/.vhp/bin` | Root-owned helper, touch monitor, keyboard backend/modules, installer-selected UID, and VirtualHere binary |
-| `/home/.vhp/data` | Private config and brightness preference; directory mode `0700` |
+| `/home/.vhp/data` | Private config, brightness preference and saved keyboard layout; directory mode `0700` |
 | `/etc/systemd/system/vhp.service` | Manually started service; not enabled at boot |
 | `/etc/sudoers.d/zz-vhp` | Fixed passwordless start/start-keyboard/stop/keepalive/check operations |
 | `/run/vhp` | Root-owned mode `0711`: traversable, not listable; root-private lease/markers and owner-only GUI socket |

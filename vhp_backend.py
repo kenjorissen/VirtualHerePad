@@ -16,7 +16,9 @@ import os
 import select
 import signal
 import socket
+import stat
 import sys
+import tempfile
 import time
 from collections import deque
 from pathlib import Path
@@ -28,6 +30,36 @@ from vhp_hardware import Brightness, Gadget, VolumeBridge  # noqa: E402
 from vhp_keyboard import KeyState  # noqa: E402
 
 STATUS_INTERVAL = 2.0  # Only while a UI client is connected.
+
+
+def read_layout(path, default="us"):
+    """Bounded data-only preference; never follow symlinks or block on a FIFO."""
+    if path is None:
+        return default
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                return default
+            data = os.read(fd, 65)
+        finally:
+            os.close(fd)
+        value = data.decode("ascii").strip()
+        return value if len(data) <= 64 and value in vhp_ipc.LAYOUTS else default
+    except (OSError, UnicodeError):
+        return default
+
+
+def save_layout(path, layout):
+    if layout not in vhp_ipc.LAYOUTS:
+        raise ValueError("Unknown layout")
+    fd, temporary = tempfile.mkstemp(prefix=".keyboard-layout-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w") as stream:
+            stream.write(layout + "\n")
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
 
 
 class Hardware:
@@ -64,7 +96,8 @@ class Backend:
         self.brightness = self.hardware.brightness
         self.volume = self.hardware.volume
         self.keys = KeyState()
-        self.layout = options.layout
+        self.layout_store = getattr(options, "layout_store", None)
+        self.layout = read_layout(self.layout_store, options.layout)
         self.stopping = False
         self.shared = False
         self.connection = None
@@ -112,7 +145,14 @@ class Backend:
         elif op == "clear":
             self.queue_report(self.keys.clear())
         elif op == "layout":
+            self.reports.clear()
+            self.queue_report(self.keys.clear())
             self.layout = message["layout"]
+            if self.layout_store is not None:
+                try:
+                    save_layout(self.layout_store, self.layout)
+                except OSError as exc:
+                    self.notice(f"WARNING: could not save keyboard layout: {exc}")
             self.send(self.status())
         elif op == "stop":
             self.stopping = True
@@ -329,6 +369,7 @@ def parse_arguments(argv):
         if os.geteuid() != 0:
             parser.error("installed backend requires root")
         options.socket = Path("/run/vhp/gui.sock")
+        options.layout_store = Path("/home/.vhp/data/keyboard-layout")
         uid = int(Path("/home/.vhp/bin/owner-uid").read_text())
         record = pwd.getpwuid(uid)
         options.owner = record.pw_name

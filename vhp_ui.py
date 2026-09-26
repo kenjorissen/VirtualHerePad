@@ -203,11 +203,17 @@ class Bridge(QObject):
     # -- operations --------------------------------------------------------
     @Slot(int)
     def press(self, code):
+        if self.layout == "ko-104" and code in (230, 228):
+            # Korean 101/104 Type 1 uses these as IME commands, not modifiers.
+            self.send_keys([(code, True), (code, False)])
+            return
         self.send_keys(self.keys.press(code))
         self.changed.emit()
 
     @Slot(int)
     def release(self, code):
+        if self.layout == "ko-104" and code in (230, 228):
+            return
         self.send_keys(self.keys.release(code))
         self.changed.emit()
 
@@ -221,7 +227,9 @@ class Bridge(QObject):
 
     @Slot()
     def clear(self):
+        caps = self.keys.caps
         self.keys = vhp_keyboard.TouchKeys()
+        self.keys.caps = caps  # Releasing keys does not toggle the PC's Caps Lock.
         self.send({"op": "clear"})
         self.changed.emit()
 
@@ -261,13 +269,20 @@ class Bridge(QObject):
     def capsActive(self):
         return self.keys.caps
 
-    @Property("QVariantList", notify=changed)
+    @Property("QVariantList", constant=True)
     def layoutNames(self):
-        return [{"id": name, "label": vhp_keyboard.LAYOUT_NAMES[name]} for name in vhp_ipc.LAYOUTS]
+        return [
+            {"id": name, "label": entry["name"], "kind": entry["kind"], "note": entry["note"]}
+            for name, entry in vhp_keyboard.CATALOG.items()
+        ]
 
     @Property(str, notify=changed)
     def layout(self):
         return self._layout
+
+    @Property(str, notify=changed)
+    def layoutNote(self):
+        return vhp_keyboard.CATALOG[self.layout]["note"]
 
     @Property(str, notify=changed)
     def layoutName(self):

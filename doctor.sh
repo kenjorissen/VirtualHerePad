@@ -20,7 +20,7 @@ for cmd in sudo systemctl systemd-inhibit curl konsole python3 flock; do
 done
 
 section 'Installed files and ownership'
-for path in /home/.vhp /home/.vhp/bin /home/.vhp/bin/vhp-root /home/.vhp/bin/vhusbdx86_64 /home/.vhp/bin/touch-stop.py /etc/systemd/system/vhp.service /home/.vhp/data /home/.vhp/bin/vhp_backend.py /home/.vhp/bin/vhp_hardware.py /home/.vhp/bin/vhp_keyboard.py /home/.vhp/bin/vhp_ipc.py /home/.vhp/bin/owner-uid; do
+for path in /home/.vhp /home/.vhp/bin /home/.vhp/bin/vhp-root /home/.vhp/bin/vhusbdx86_64 /home/.vhp/bin/touch-stop.py /etc/systemd/system/vhp.service /home/.vhp/data /home/.vhp/bin/vhp_backend.py /home/.vhp/bin/vhp_hardware.py /home/.vhp/bin/vhp_keyboard.py /home/.vhp/bin/vhp_layouts.json /home/.vhp/bin/vhp_ipc.py /home/.vhp/bin/owner-uid; do
   if [[ -e $path ]]; then
     stat -c '%U:%G %a %n' "$path"
     [[ ! -L $path ]] || warn "Unexpected symlink: $path"
@@ -42,7 +42,7 @@ done
 
 section 'Installed user tools (independent of the checkout)'
 user_root="${HOME:?HOME must be set}/.local/share/VirtualHerePad"
-for name in vhp.sh vhp-launch.sh vhp_session.py vhp_qt.py vhp_ui.py vhp_ui.qml doctor.sh uninstall.sh steam-shortcut.py; do
+for name in vhp.sh vhp-launch.sh vhp_session.py vhp_qt.py vhp_ui.py vhp_ui.qml vhp_layouts.json doctor.sh uninstall.sh steam-shortcut.py; do
   if [[ -r "$user_root/$name" ]]; then
     echo "OK: $user_root/$name"
   else
@@ -65,6 +65,8 @@ for path in /run/vhp/gui.sock /sys/kernel/config/usb_gadget/vhp_keyboard /dev/ui
   if [[ -e $path ]]; then stat -c '%U:%G %a %n' "$path"; fi
 done
 echo 'Keyboard/gadget capability is tested at launch; diagnostics never load modules or grab input.'
+echo 'Saved layout: /home/.vhp/data/keyboard-layout (private, preserved on reinstall).'
+echo 'A layout/profile changes Deck legends only. Match the PC layout/IME; there is no automatic detection.'
 
 section 'Installed version (not the current checkout)'
 if [[ -r /home/.vhp/bin/build-info.txt ]]; then
