@@ -32,6 +32,10 @@ sharing possible. Purchase and licensing are handled directly by
 [VirtualHere](https://www.virtualhere.com/), separately from this free, open-source
 project.
 
+> **Author's note:** I'm a big supporter of open-source software, but I fully
+> respect companies that build and sell paid software. Until there's an
+> open-source solution as clean as VirtualHere, I'll happily pay them for it.
+
 **A license is required for VHP's controller-plus-keyboard support:** the Steam
 Controller and VHP Touch Keyboard are **two separate USB devices**, shared at the
 same time. The unlicensed one-device allowance is suitable for controller-only
