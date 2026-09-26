@@ -144,7 +144,7 @@ path, use `VHP_SERVER_PATH="/path/to/vhusbdx86_64" ./setup.sh --manual-download`
 An independently trusted `VHP_SHA256` can also be supplied for an automatic check.
 
 Manual mode makes **no Qt downloads either**. Use `--terminal`, or prepare Qt
-separately with `python3 vhp-gui-deps.py` before offline keyboard setup.
+separately with `python3 tools/vhp-gui-deps.py` before offline keyboard setup.
 `VHP_QT_PATH=/path/to/pylib` can supply an existing matching runtime; setup validates
 it before changing the installed service.
 
@@ -203,7 +203,7 @@ held; releasing early, sliding off, or losing focus cancels the hold.
 The root backend is a supervised child of `vhp.service`, not a separately run
 terminal command. Closing/crashing the UI ends the backend; the quit button,
 backend failure, and heartbeat expiry stop the whole service. Keyboard mode does
-not run the corner-hold monitor. `vhp-gui-sandbox.sh` is only a compatibility alias
+not run the corner-hold monitor. `src/vhp-gui-sandbox.sh` is only a compatibility alias
 for the installed launcher, not an installer or root-checkout runner.
 
 **Coverage is not a promise of exhaustive testing.** Layout legends are based on
@@ -532,6 +532,27 @@ for diagnostics. The proprietary binary is not included in Git or GitHub release
 
 ## Development
 
+### Repository layout
+
+```text
+setup.sh, doctor.sh, uninstall.sh   User-facing commands
+src/                               Runtime shell/Python, QML, and layout catalog
+packaging/                         systemd service and Konsole configuration
+tools/                             Installer helpers and layout-data generator
+tests/                             Isolated regression tests
+docs/                              Detailed feature documentation
+```
+
+This is the **source layout**, not the installed layout. Setup copies the runtime
+and required helpers into `/home/.vhp/bin` and
+`~/.local/share/VirtualHerePad`, keeping their existing installed filenames.
+Settings remain in `/home/.vhp/data`; installed launchers, imports and uninstall
+work without the checkout. The layout generator is development-only.
+
+Run the commands below from the repository root. Runtime Python modules live in
+`src/`; use `PYTHONPATH=src` for ad-hoc imports in development, never to bypass the
+installed root backend's isolated Python environment.
+
 There is no build step. On a Linux development machine, have **Python 3, Bash,
 GNU make, ShellCheck, and [uv](https://docs.astral.sh/uv/)** available. `uvx` caches
 the formatters on first use; no project virtual environment is required. These
@@ -559,8 +580,8 @@ Tests use temporary files and mock services, not USB devices or root access.
 They do not install/start the real VHP service. Shortcut tests reject unmocked
 input and process launches; stdout/stderr is shown only on failure. For hardware
 changes, verify launch, client connection, the selected mode's quit control,
-brightness/terminal restoration, and forced-launcher cleanup on the Deck. Qt tests need a private
-PySide6 runtime and `QT_QPA_PLATFORM=offscreen`; without it they are explicitly
+brightness/terminal restoration, and forced-launcher cleanup on the Deck. Qt tests
+need a private PySide6 runtime and `QT_QPA_PLATFORM=offscreen`; without it they are explicitly
 skipped. Run both Qt-enabled and standard-library suites before shipping.
 
 ## Credits and license

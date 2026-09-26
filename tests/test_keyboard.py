@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))  # Discover imports tests/ as top-level; reach repo modules.
+sys.path.insert(0, str(ROOT / "src"))  # Discover imports tests/ as top-level; reach source modules.
 
 import vhp_hardware  # noqa: E402
 import vhp_keyboard  # noqa: E402
@@ -211,7 +211,7 @@ class GridTests(unittest.TestCase):
 
 class BrightnessTests(unittest.TestCase):
     def shell_target(self, maximum, percent, product):
-        source = (ROOT / "vhp-root").read_text()
+        source = (ROOT / "src/vhp-root").read_text()
         functions = source.split("# BEGIN BRIGHTNESS_FUNCTIONS\n", 1)[1].split(
             "# END BRIGHTNESS_FUNCTIONS", 1
         )[0]
@@ -262,7 +262,7 @@ class ReportDescriptorTests(unittest.TestCase):
 
     def test_replacement_keyboard_is_created_before_the_source_is_grabbed(self):
         # Ordering is safety-critical: local keys must always have somewhere to go.
-        source = (ROOT / "vhp_hardware.py").read_text()
+        source = (ROOT / "src/vhp_hardware.py").read_text()
         self.assertLess(source.index("UI_DEV_CREATE"), source.index("EVIOCGRAB"))
         self.assertLess(
             source.index("Replacement keyboard did not appear"), source.index("EVIOCGRAB")

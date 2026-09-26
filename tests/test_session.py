@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("session", ROOT / "vhp_session.py")
+spec = importlib.util.spec_from_file_location("session", ROOT / "src/vhp_session.py")
 session = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(session)
 
@@ -120,7 +120,7 @@ class ModeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             launcher = root / "vhp-launch.sh"
-            launcher.write_text((ROOT / "vhp-launch.sh").read_text())
+            launcher.write_text((ROOT / "src/vhp-launch.sh").read_text())
             terminal = root / "vhp-gui.sh"
             terminal.write_text("#!/bin/bash\necho terminal\n")
             terminal.chmod(0o755)
@@ -153,7 +153,7 @@ class ModeTests(unittest.TestCase):
                 '#!/bin/bash\nprintf "%s\\n" "$*" >>"$CALLS"\nif [[ $1 == is-active ]]; then exit "${ACTIVE:-1}"; fi\n'
             )
             systemctl.chmod(0o755)
-            source = (ROOT / "vhp-root").read_text()
+            source = (ROOT / "src/vhp-root").read_text()
             source = source.replace("[[ $EUID == 0 && $# == 1 ]]", "[[ $# == 1 ]]")
             source = source.replace("/usr/bin/systemctl", str(systemctl))
             source = source.replace("/run/vhp-launch", str(root / "selection"))

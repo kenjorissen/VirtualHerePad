@@ -117,9 +117,9 @@ for target in /home/.vhp/bin /home/.vhp/data /etc/systemd/system /etc/sudoers.d;
   rm -f -- "$probe"
 done
 VHP_PREFLIGHT
-if ! python3 steam-shortcut.py --check; then
+if ! python3 tools/steam-shortcut.py --check; then
   echo 'WARNING: Steam account setup needs attention; installation can continue without a shortcut.'
-  echo 'Log into Steam once, or use --account ID with steam-shortcut.py if prompted.'
+  echo 'Log into Steam once, or use --account ID with tools/steam-shortcut.py if prompted.'
 fi
 echo 'Preflight passed. No Steam processes were stopped.'
 echo 'Display note: Steam adaptive brightness may override VHP screen dimming.'
@@ -208,14 +208,14 @@ fi
 qt_source=''
 if [[ $mode == keyboard ]]; then
   qt_source=${VHP_QT_PATH:-$USER_ROOT/pylib}
-  if ! python3 -I vhp-gui-deps.py --check --destination "$qt_source"; then
+  if ! python3 -I tools/vhp-gui-deps.py --check --destination "$qt_source"; then
     if [[ -n $server_path || -n ${VHP_QT_PATH:-} ]]; then
       echo 'A verified matching Qt runtime is required for offline keyboard setup.' >&2
-      echo 'Fetch it first with: python3 vhp-gui-deps.py (or select --terminal).' >&2
+      echo 'Fetch it first with: python3 tools/vhp-gui-deps.py (or select --terminal).' >&2
       exit 1
     fi
     qt_source="$tmp/pylib"
-    python3 -I vhp-gui-deps.py --destination "$qt_source"
+    python3 -I tools/vhp-gui-deps.py --destination "$qt_source"
   fi
 fi
 
@@ -282,13 +282,15 @@ for previous in "$base/config.ini" /var/lib/vhp/config.ini; do
 done
 VHP_DATA_SETUP
 sudo install -o root -g root -m 755 "$tmp/vhusbdx86_64" /home/.vhp/bin/vhusbdx86_64
-sudo install -o root -g root -m 755 vhp-root /home/.vhp/bin/vhp-root
-sudo install -o root -g root -m 644 touch-stop.py /home/.vhp/bin/touch-stop.py
-sudo install -o root -g root -m 644 vhp_backend.py vhp_hardware.py vhp_keyboard.py vhp_layouts.json vhp_ipc.py /home/.vhp/bin/
+# BEGIN ROOT_CODE_INSTALL
+sudo install -o root -g root -m 755 src/vhp-root /home/.vhp/bin/vhp-root
+sudo install -o root -g root -m 644 src/touch-stop.py /home/.vhp/bin/touch-stop.py
+sudo install -o root -g root -m 644 src/vhp_backend.py src/vhp_hardware.py src/vhp_keyboard.py src/vhp_layouts.json src/vhp_ipc.py /home/.vhp/bin/
+# END ROOT_CODE_INSTALL
 id -u >"$tmp/owner-uid"
 sudo install -o root -g root -m 600 "$tmp/owner-uid" /home/.vhp/bin/owner-uid
 sudo install -o root -g root -m 644 "$tmp/build-info.txt" /home/.vhp/bin/build-info.txt
-sudo install -o root -g root -m 644 vhp.service /etc/systemd/system/vhp.service
+sudo install -o root -g root -m 644 packaging/vhp.service /etc/systemd/system/vhp.service
 # Preserve any existing license/settings. Never automatically import checkout files.
 # SteamOS's general password-required rule must come before this override.
 sudo install -o root -g root -m 440 "$tmp/sudoers" /etc/sudoers.d/zz-vhp
@@ -305,9 +307,9 @@ fi
 # BEGIN USER_INSTALL
 # No runtime tool should depend on this checkout remaining in place.
 install -d -m 755 "$USER_ROOT"
-install -m 755 vhp.sh vhp-gui.sh vhp-launch.sh doctor.sh uninstall.sh "$USER_ROOT/"
-install -m 644 steam-shortcut.py vhp_session.py vhp_qt.py vhp_ui.py vhp_ui.qml \
-  vhp_keyboard.py vhp_layouts.json vhp_ipc.py vhp_dashboard.py vhp-gui-deps.py "$USER_ROOT/"
+install -m 755 src/vhp.sh src/vhp-gui.sh src/vhp-launch.sh doctor.sh uninstall.sh "$USER_ROOT/"
+install -m 644 tools/steam-shortcut.py src/vhp_session.py src/vhp_qt.py src/vhp_ui.py src/vhp_ui.qml \
+  src/vhp_keyboard.py src/vhp_layouts.json src/vhp_ipc.py src/vhp_dashboard.py tools/vhp-gui-deps.py "$USER_ROOT/"
 printf '%s\n' "${mode:-terminal}" >"$USER_ROOT/launch-mode"
 if [[ -n ${qt_source:-} && $qt_source != "$USER_ROOT/pylib" ]]; then
   # Staging was validated before privileged installation; replacement is rollback-safe.
@@ -321,8 +323,8 @@ if [[ -n ${qt_source:-} && $qt_source != "$USER_ROOT/pylib" ]]; then
   rm -rf -- "$qt_stage.previous"
 fi
 install -d -m 700 "$USER_ROOT/konsole/config" "$USER_ROOT/konsole/data/kxmlgui5/konsole"
-install -m 600 konsole/config/konsolerc "$USER_ROOT/konsole/config/konsolerc"
-install -m 600 konsole/data/kxmlgui5/konsole/*.rc "$USER_ROOT/konsole/data/kxmlgui5/konsole/"
+install -m 600 packaging/konsole/config/konsolerc "$USER_ROOT/konsole/config/konsolerc"
+install -m 600 packaging/konsole/data/kxmlgui5/konsole/*.rc "$USER_ROOT/konsole/data/kxmlgui5/konsole/"
 # GUI state is disposable: do not let an older saved toolbar layout override XML.
 rm -f -- "$USER_ROOT/konsole/state/konsolestaterc"
 # END USER_INSTALL

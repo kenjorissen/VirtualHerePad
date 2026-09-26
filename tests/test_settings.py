@@ -91,9 +91,16 @@ class SettingsTests(unittest.TestCase):
                 self.assertFalse((folder / "missing").exists())
 
     def test_no_protected_usr_install_paths(self):
-        for name in ("setup.sh", "uninstall.sh", "vhp-root", "vhp.sh", "vhp.service", "doctor.sh"):
+        for name in (
+            "setup.sh",
+            "uninstall.sh",
+            "src/vhp-root",
+            "src/vhp.sh",
+            "packaging/vhp.service",
+            "doctor.sh",
+        ):
             self.assertNotIn("/usr/local", (ROOT / name).read_text())
-        self.assertIn("RequiresMountsFor=/home/.vhp", (ROOT / "vhp.service").read_text())
+        self.assertIn("RequiresMountsFor=/home/.vhp", (ROOT / "packaging/vhp.service").read_text())
 
 
 if __name__ == "__main__":

@@ -306,7 +306,7 @@ def main():
     parser.add_argument("--cache", type=Path, required=True)
     parser.add_argument("--fetch", action="store_true")
     parser.add_argument(
-        "--output", type=Path, default=Path(__file__).resolve().parents[1] / "vhp_layouts.json"
+        "--output", type=Path, default=Path(__file__).resolve().parents[1] / "src/vhp_layouts.json"
     )
     args = parser.parse_args()
     args.cache.mkdir(parents=True, exist_ok=True)

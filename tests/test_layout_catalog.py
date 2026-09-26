@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src"))
 from test_backend import Harness  # noqa: E402
 
 import vhp_backend  # noqa: E402
@@ -257,7 +257,7 @@ class BuilderTests(unittest.TestCase):
             builder.parse_keys(b"<KeyboardLayout><PhysicalKeys /></KeyboardLayout>", "ansi")
 
     def test_catalog_writer_roundtrips_escaped_labels(self):
-        data = json.loads((ROOT / "vhp_layouts.json").read_text())
+        data = json.loads((ROOT / "src/vhp_layouts.json").read_text())
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "out.json"
             builder.write_catalog(data, path)
