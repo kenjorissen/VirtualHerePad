@@ -372,6 +372,7 @@ class DashboardTests(unittest.TestCase):
             systemctl.write_text(
                 '#!/bin/bash\n[[ $1 == is-active && ! -e "$ACTIVE_CHECK" ]] || exit 1\ntouch "$ACTIVE_CHECK"\n'
             )
+            (folder / "vhp_idle.py").write_text("# idle helper stub\n")
             launcher = folder / "launcher"
             launcher.write_text(
                 (ROOT / "vhp.sh")
@@ -416,6 +417,7 @@ class DashboardTests(unittest.TestCase):
                 command.write_text("#!/bin/bash\nexit 1\n")
             for command in (helper, sudo, systemctl, ip, ss):
                 command.chmod(0o755)
+            (folder / "vhp_idle.py").write_text("# idle helper stub\n")
             launcher = folder / "launcher"
             launcher.write_text(
                 (ROOT / "vhp.sh")

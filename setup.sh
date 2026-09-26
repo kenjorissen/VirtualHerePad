@@ -123,7 +123,13 @@ if ! python3 tools/steam-shortcut.py --check; then
 fi
 echo 'Preflight passed. No Steam processes were stopped.'
 echo 'Display note: VHP maintains its selected brightness while running; disable Steam adaptive brightness to avoid competing changes.'
-echo 'Its current setting is not checked or changed. You can leave it enabled.'
+echo 'The adaptive brightness setting is not checked or changed.'
+echo 'Gaming Mode: VHP uses activity pulses to prevent automatic dim/sleep without changing your timeouts. Exit VHP before requesting sleep.'
+for cmd in xprop pgrep; do
+  if ! command -v "$cmd" >/dev/null; then
+    echo "WARNING: missing $cmd; Gaming Mode idle protection will be unavailable. See README: Gaming Mode idle handling." >&2
+  fi
+done
 
 tmp=$(mktemp -d)
 trap 'rm -rf -- "$tmp"' EXIT
@@ -308,7 +314,7 @@ fi
 # No runtime tool should depend on this checkout remaining in place.
 install -d -m 755 "$USER_ROOT"
 install -m 755 src/vhp.sh src/vhp-gui.sh src/vhp-launch.sh doctor.sh uninstall.sh "$USER_ROOT/"
-install -m 644 tools/steam-shortcut.py src/vhp_session.py src/vhp_qt.py src/vhp_ui.py src/vhp_ui.qml \
+install -m 644 tools/steam-shortcut.py src/vhp_session.py src/vhp_idle.py src/vhp_qt.py src/vhp_ui.py src/vhp_ui.qml \
   src/vhp_keyboard.py src/vhp_layouts.json src/vhp_ipc.py src/vhp_dashboard.py tools/vhp-gui-deps.py "$USER_ROOT/"
 printf '%s\n' "${mode:-terminal}" >"$USER_ROOT/launch-mode"
 if [[ -n ${qt_source:-} && $qt_source != "$USER_ROOT/pylib" ]]; then

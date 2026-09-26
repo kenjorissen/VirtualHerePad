@@ -282,6 +282,11 @@ cleanup() {
   fi
   echo 'VHP stopped.'
 }
+# Pulse Steam's idle bookkeeping before privileged brightness changes. The
+# helper returns a validated target token, or nothing outside Gaming Mode.
+IDLE_HELPER="$(dirname -- "$(readlink -f -- "$0")")/vhp_idle.py"
+idle_target=$(/usr/bin/python3 -I "$IDLE_HELPER" start)
+next_idle_pulse=$((SECONDS + 10))
 # Do not claim/stop somebody else's service if start is refused.
 sudo -n "$HELPER" start
 trap cleanup EXIT
@@ -307,6 +312,12 @@ while /usr/bin/systemctl is-active --quiet vhp.service; do
       echo 'ERROR: could not refresh the VHP heartbeat.' >&2
       exit 1
     fi
+  fi
+  # Reuse this heartbeat loop; no additional persistent watcher. Stop the
+  # service through the EXIT trap if its Gamescope session/protection is lost.
+  if [[ -n $idle_target && $shutdown_shown == false ]] && ((SECONDS >= next_idle_pulse)); then
+    /usr/bin/python3 -I "$IDLE_HELPER" pulse "$idle_target"
+    next_idle_pulse=$((SECONDS + 10))
   fi
   # Reuse the existing heartbeat loop; no extra polling processes or animations.
   if "$ui_dirty"; then resize_dashboard; fi

@@ -42,7 +42,7 @@ done
 
 section 'Installed user tools (independent of the checkout)'
 user_root="${HOME:?HOME must be set}/.local/share/VirtualHerePad"
-for name in vhp.sh vhp-launch.sh vhp_session.py vhp_qt.py vhp_ui.py vhp_ui.qml vhp_layouts.json doctor.sh uninstall.sh steam-shortcut.py; do
+for name in vhp.sh vhp-launch.sh vhp_session.py vhp_idle.py vhp_qt.py vhp_ui.py vhp_ui.qml vhp_layouts.json doctor.sh uninstall.sh steam-shortcut.py; do
   if [[ -r "$user_root/$name" ]]; then
     echo "OK: $user_root/$name"
   else
@@ -108,7 +108,13 @@ if [[ -r /sys/class/dmi/id/product_name ]]; then
 fi
 echo 'Use sudoedit to change it; restart VHP to apply. Saved/target values appear in the journal.'
 echo 'Steam adaptive brightness: not queried or changed by VHP.'
-echo 'It may override one-time dimming; check Steam > Settings > Display if the screen relights.'
+echo 'It can compete with VHP brightness maintenance; check Steam > Settings > Display if the screen flickers.'
+echo 'Gaming Mode idle handling: normal-user activity pulses; Steam dim/sleep settings are not changed.'
+for cmd in xprop pgrep; do
+  command -v "$cmd" >/dev/null || warn "Missing $cmd: Gamescope idle keepalive unavailable"
+done
+echo 'Idle keepalive opt-out: VHP_DISABLE_GAMESCOPE_IDLE=1 (requires manually disabling automatic dim/sleep).'
+# Do not run the idle helper here: diagnostics must not publish activity or change display state.
 if [[ -r /sys/class/backlight/amdgpu_bl0/brightness ]]; then
   printf 'Current brightness: '
   head -n 1 /sys/class/backlight/amdgpu_bl0/brightness

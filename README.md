@@ -257,9 +257,11 @@ The message remains visible until the stop command finishes, then terminal state
 is restored. The brief shutdown wait remains necessary for orderly USB cleanup.
 
 While VHP is running, the service requests systemd inhibition of **sleep** and
-**idle**. Both are released on exit. These are advisory: compositor/Steam display
-blanking policies and forced suspension may behave differently. A mostly static
-image can remain on screen for the whole session; consider OLED burn-in risk.
+**idle**. Both are released on exit. Gaming Mode also needs the normal-user
+[idle keepalive](#gaming-mode-idle-handling) described below: the system inhibitor
+alone does not prevent Steam from starting a broken suspend transition.
+Forced suspension may behave differently. A mostly static image can remain on
+screen for the whole session; consider OLED burn-in risk.
 
 For **terminal mode's** corner-hold exit, keep one finger within the outer **12%
 of both screen axes** for two seconds. Releasing, moving out, or adding another finger cancels it.
@@ -278,6 +280,42 @@ Keep only one launcher open: all launchers control the same service. A touch
 request is handled within the existing one-second loop. If Steam force-kills
 the launcher, the service stops after about ten seconds without a heartbeat.
 A hung USB server gets up to three additional seconds before being killed.
+
+### Gaming Mode idle handling
+
+Both interfaces publish a small activity pulse to Steam's Gamescope X11 root
+window every ten seconds, using the existing launcher heartbeat loop. This
+starts before the service lowers brightness and ends when the launcher stops
+sharing. There is no additional persistent watcher, no keyboard/controller/mouse
+input injection, and no change to Steam's saved dim or sleep timeouts. Normal
+idle behavior resumes after the pulses stop. Desktop Mode skips this workaround.
+
+This is an **undocumented Gamescope activity-counter workaround**, not a standard
+sleep-inhibition API. It addresses two observed interactions:
+
+- Steam can play its sleep animation and leave a black screen when the system
+  inhibitor rejects sleep ([upstream report](https://github.com/ValveSoftware/SteamOS/issues/2619)).
+- Steam's idle dimming can start its fade from Steam's remembered brightness,
+  raising the panel above VHP's selected minimum. Brightness maintenance then
+  competes with that fade, causing flicker.
+
+The launcher requires one identifiable local Gamescope session and an existing,
+correctly typed activity counter. Missing tools/counter, an ambiguous target,
+command failures, or a changed compositor stop startup or end the active VHP
+session with an error, rather than silently continuing without this protection.
+These checks cannot establish that every future Steam build still honors the
+counter. `xprop` and `pgrep` must be available; setup does not install system packages.
+
+For troubleshooting, `VHP_DISABLE_GAMESCOPE_IDLE=1` in the launcher's environment
+opts out. **Disable Steam's automatic dimming and sleep manually before using
+that opt-out.** Neither option disables adaptive brightness; keep that off to
+avoid competing adjustments. VHP never rewrites Steam's power preferences or
+restores a stale activity-counter value on exit.
+
+This prevents tested **automatic idle** transitions, not explicit power-button
+sleep requests. Exit VHP before requesting sleep: the system inhibitor can still
+reject manual sleep, exposing the same Steam bug. Critical-battery settings,
+Steam Input, and VirtualHere's controller transport are not changed.
 
 ### Screen brightness
 

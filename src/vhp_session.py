@@ -10,6 +10,9 @@ from pathlib import Path
 
 HELPER = "/home/.vhp/bin/vhp-root"
 BASE = Path(__file__).resolve().parent
+# -I excludes the script directory; load only our installed normal-user modules.
+sys.path.insert(0, str(BASE))
+from vhp_idle import IdleError, IdleKeepalive  # noqa: E402
 
 
 def helper(action, timeout=20):
@@ -39,6 +42,9 @@ def main():
     ui = None
     started = False
     try:
+        idle = IdleKeepalive.start()
+        if stopping:
+            return 0
         if helper("start-keyboard"):
             return 1  # Do not stop a session owned by another launcher.
         started = True
@@ -51,8 +57,15 @@ def main():
                 if status != 2:
                     print("VHP service/heartbeat ended; closing the UI.", file=sys.stderr)
                 break
+            idle.tick()
             time.sleep(1)
         return ui.returncode or 0
+    except IdleError as exc:
+        print(
+            f"VHP idle protection failed: {exc}. See README: Gaming Mode idle handling.",
+            file=sys.stderr,
+        )
+        return 1
     finally:
         if ui is not None and ui.poll() is None:
             ui.terminate()

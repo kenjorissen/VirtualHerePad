@@ -17,6 +17,7 @@ TOOLS = (
     "uninstall.sh",
     "steam-shortcut.py",
     "vhp_session.py",
+    "vhp_idle.py",
     "vhp_qt.py",
     "vhp_ui.py",
     "vhp_ui.qml",
@@ -47,7 +48,12 @@ class UserInstallTests(unittest.TestCase):
         self.home = self.root / "user home"
         self.home.mkdir()
         self.installed = self.home / ".local/share/VirtualHerePad"
-        self.env = dict(os.environ, HOME=str(self.home), USER_ROOT=str(self.installed))
+        self.env = dict(
+            os.environ,
+            HOME=str(self.home),
+            USER_ROOT=str(self.installed),
+            XDG_CURRENT_DESKTOP="KDE",
+        )
         for name in TOOLS:
             relative = source_path(name)
             destination = self.checkout / relative
@@ -100,11 +106,11 @@ class UserInstallTests(unittest.TestCase):
                 "-I",
                 "-c",
                 "import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); "
-                "import vhp_keyboard, vhp_ipc, vhp_dashboard; "
+                "import vhp_keyboard, vhp_ipc, vhp_dashboard, vhp_idle; "
                 "assert 'zh-tw-zhuyin' in vhp_keyboard.CATALOG; "
                 "assert set(vhp_ipc.LAYOUTS) == set(vhp_keyboard.CATALOG); "
                 "assert all(Path(module.__file__).parent == Path(sys.argv[1]) "
-                "for module in (vhp_keyboard, vhp_ipc, vhp_dashboard))",
+                "for module in (vhp_keyboard, vhp_ipc, vhp_dashboard, vhp_idle))",
                 str(self.installed),
             ],
             cwd=self.root,

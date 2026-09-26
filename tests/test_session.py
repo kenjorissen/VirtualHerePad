@@ -23,6 +23,7 @@ class SessionTests(unittest.TestCase):
             patch.object(session.time, "sleep"),
             patch.object(session.subprocess, "run", return_value=MagicMock(returncode=0)),
             patch.object(session.subprocess, "Popen"),
+            patch.object(session.IdleKeepalive, "start"),
         ]
         self.mocks = [guard.start() for guard in guards]
         for guard in guards:
@@ -32,6 +33,8 @@ class SessionTests(unittest.TestCase):
         self.ui = self.popen.return_value
         self.ui.poll.return_value = 0
         self.ui.returncode = 0
+        self.idle_start = self.mocks[6]
+        self.idle = self.idle_start.return_value
 
     def test_normal_quit_stops_service(self):
         with patch.object(session, "helper", return_value=0) as helper:
@@ -74,6 +77,48 @@ class SessionTests(unittest.TestCase):
         )
         self.ui.terminate.assert_called_once()
         self.ui.wait.assert_called_once_with(timeout=3)
+
+    def test_idle_failure_before_start_never_touches_hardware(self):
+        self.idle_start.side_effect = session.IdleError("missing counter")
+        with patch.object(session, "helper") as helper:
+            self.assertEqual(session.main(), 1)
+        helper.assert_not_called()
+        self.popen.assert_not_called()
+
+    def test_idle_loss_stops_owned_session_and_ui(self):
+        self.ui.poll.return_value = None
+        self.idle.tick.side_effect = session.IdleError("session changed")
+        with patch.object(session, "helper", return_value=0) as helper:
+            self.assertEqual(session.main(), 1)
+        self.assertEqual(
+            [call.args[0] for call in helper.call_args_list],
+            ["start-keyboard", "keepalive", "stop"],
+        )
+        self.ui.terminate.assert_called_once()
+        self.idle.tick.assert_called_once()
+
+    def test_idle_pulse_precedes_brightness_start_and_uses_existing_loop(self):
+        events = []
+        self.idle_start.side_effect = lambda: (events.append("idle-start"), self.idle)[1]
+        self.idle.tick.side_effect = lambda: events.append("idle-tick")
+        self.ui.poll.side_effect = [None, 0, 0]
+        with patch.object(
+            session, "helper", side_effect=lambda action, **kw: (events.append(action), 0)[1]
+        ):
+            self.assertEqual(session.main(), 0)
+        self.assertEqual(events, ["idle-start", "start-keyboard", "keepalive", "idle-tick", "stop"])
+
+    def test_signal_during_idle_start_does_not_start_service(self):
+        def interrupted_start():
+            callback = session.signal.signal.call_args_list[0].args[1]
+            callback(session.signal.SIGTERM, None)
+            return self.idle
+
+        self.idle_start.side_effect = interrupted_start
+        with patch.object(session, "helper") as helper:
+            self.assertEqual(session.main(), 0)
+        helper.assert_not_called()
+        self.popen.assert_not_called()
 
     def test_hung_ui_is_killed_before_stop(self):
         self.ui.poll.return_value = None

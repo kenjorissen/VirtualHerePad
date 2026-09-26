@@ -97,6 +97,8 @@ class LifecycleTests(unittest.TestCase):
             systemctl = folder / "systemctl"
             systemctl.write_text("#!/bin/bash\nexit 0\n")
             systemctl.chmod(0o755)
+            # This lifecycle fixture does not contact a real display server.
+            (folder / "vhp_idle.py").write_text("# idle helper stub\n")
             launcher = folder / "launcher"
             launcher.write_text(
                 (ROOT / "src/vhp.sh")
