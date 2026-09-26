@@ -77,7 +77,7 @@ class EncodeDecodeTests(unittest.TestCase):
             with self.subTest(code=code):
                 with self.assertRaises(vhp_ipc.ProtocolError):
                     vhp_ipc.validate({"op": "key", "code": code, "down": True})
-        for layout in ("", "US", "us-dvorak", "us; rm -rf /", "de\n"):
+        for layout in ("", "US", "not-a-layout", "us; rm -rf /", "de\n"):
             with self.subTest(layout=layout):
                 with self.assertRaises(vhp_ipc.ProtocolError):
                     vhp_ipc.validate({"op": "layout", "layout": layout})

@@ -8,6 +8,8 @@ exact types and known key codes only. Nothing here touches hardware.
 
 import json
 
+from vhp_keyboard import ALLOWED_KEYS, LAYOUT_NAMES
+
 MAX_LINE = 4096
 OPERATIONS = {
     # op -> {field: type}
@@ -18,7 +20,7 @@ OPERATIONS = {
     "ping": {},
     "stop": {},
 }
-LAYOUTS = ("us", "uk", "de", "fr")
+LAYOUTS = tuple(LAYOUT_NAMES)
 # Replies from the root backend to the UI. Validated just as strictly as requests
 # so a malformed or unexpected reply can never be silently trusted.
 RESPONSES = {
@@ -27,7 +29,7 @@ RESPONSES = {
 }
 # HID usages present on a keyboard: letters/digits/punctuation/function,
 # navigation, and the eight modifiers.
-KEY_CODES = set(range(4, 70)) | {76, 79, 80, 81, 82, 100} | set(range(224, 232))
+KEY_CODES = ALLOWED_KEYS
 
 
 class ProtocolError(Exception):

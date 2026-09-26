@@ -15,12 +15,13 @@ EV_SYN, EV_KEY, EV_MSC = 0, 1, 4
 VOLUME_DOWN, VOLUME_UP = 114, 115
 GADGET = Path("/sys/kernel/config/usb_gadget/vhp_keyboard")
 SERIAL = "vhp-virtual-keyboard-v1"
-# Standard boot-protocol keyboard. Intentionally byte-identical to the
-# descriptor verified end-to-end against VirtualHere and Windows.
+# Eight-byte keyboard reports, with the array range extended through LANG2
+# (0x91) for ABNT2, JIS and Korean keys. Logical max uses two bytes, not a signed
+# one-byte value. The reserved byte, modifier bits and six-key array are unchanged.
 REPORT_DESCRIPTOR = bytes.fromhex(
     "05010906a101050719e029e715002501750195088102950175088101"
-    "9505750105081901290591029501750391019506750815002565"
-    "0507190029658100c0"
+    "950575010508190129059102950175039101950675081500269100"
+    "0507190029918100c0"
 )
 
 

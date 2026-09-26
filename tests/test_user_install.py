@@ -21,6 +21,7 @@ TOOLS = (
     "vhp_ui.py",
     "vhp_ui.qml",
     "vhp_keyboard.py",
+    "vhp_layouts.json",
     "vhp_ipc.py",
     "vhp_dashboard.py",
     "vhp-gui-deps.py",

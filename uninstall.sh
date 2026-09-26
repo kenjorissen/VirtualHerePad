@@ -41,7 +41,7 @@ rm -f -- "$USER_ROOT/vhp.sh" "$USER_ROOT/vhp-gui.sh" "$USER_ROOT/doctor.sh" \
   "$USER_ROOT/steam-shortcut.py" "$USER_ROOT/uninstall.sh" \
   "$USER_ROOT/vhp-launch.sh" "$USER_ROOT/vhp_session.py" "$USER_ROOT/vhp_qt.py" \
   "$USER_ROOT/vhp_ui.py" "$USER_ROOT/vhp_ui.qml" "$USER_ROOT/vhp_ipc.py" \
-  "$USER_ROOT/vhp_keyboard.py" "$USER_ROOT/vhp_dashboard.py" "$USER_ROOT/vhp-gui-deps.py" \
+  "$USER_ROOT/vhp_keyboard.py" "$USER_ROOT/vhp_layouts.json" "$USER_ROOT/vhp_dashboard.py" "$USER_ROOT/vhp-gui-deps.py" \
   "$USER_ROOT/launch-mode" "$USER_ROOT/session.lock"
 # This entire subtree is VHP's disposable GUI configuration/state/cache.
 rm -rf -- "$USER_ROOT/konsole" "$USER_ROOT/pylib" "$USER_ROOT/__pycache__"
