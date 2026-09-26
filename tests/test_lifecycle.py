@@ -33,6 +33,9 @@ class LifecycleTests(unittest.TestCase):
     def test_keyboard_launcher_sigkill_stops_backend_and_restores_brightness(self):
         self.exercise(kill_launcher=True, keyboard=True)
 
+    def test_group_term_during_cleanup_still_restores_brightness(self):
+        self.exercise(kill_launcher=False, keyboard_exit=True, stop_during_cleanup=True)
+
     def exercise(
         self,
         kill_launcher,
@@ -40,6 +43,7 @@ class LifecycleTests(unittest.TestCase):
         keyboard=False,
         keyboard_exit=False,
         brightness_reset=False,
+        stop_during_cleanup=False,
     ):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
@@ -162,6 +166,23 @@ class LifecycleTests(unittest.TestCase):
                         service.send_signal(signal.SIGTERM)
                 elif not keyboard_exit:
                     service.send_signal(signal.SIGTERM)
+                if stop_during_cleanup:
+                    # Backend disconnect begins EXIT cleanup; systemd then sends
+                    # TERM to the entire group when the launcher requests stop.
+                    deadline = time.monotonic() + 3
+                    while not (runtime / "stopping").exists():
+                        if time.monotonic() > deadline or service.poll() is not None:
+                            self.fail("Mock service did not enter cleanup")
+                        time.sleep(0.02)
+                    os.killpg(service.pid, signal.SIGTERM)
+                    service.wait(timeout=6)
+                    if service.returncode != 0:
+                        # A broken cleanup can leave the fake TERM-ignoring
+                        # server holding stdout open; don't let that hide failure.
+                        try:
+                            os.killpg(service.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
                 output, _ = service.communicate(timeout=17)
                 self.assertEqual(service.returncode, 0, output)
                 self.assertTrue((runtime / "stopping").exists())

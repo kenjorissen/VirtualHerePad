@@ -178,7 +178,11 @@ mode=terminal
 if [[ -f /run/vhp-launch/mode ]]; then read -r mode </run/vhp-launch/mode; fi
 [[ $mode == terminal || $mode == keyboard ]] || exit 1
 cleanup() {
-  trap - EXIT INT TERM
+  trap - EXIT
+  # Backend exit can start cleanup before the launcher requests systemd stop.
+  # Ignore subsequent group TERM/INT (also in cleanup's sleeps) so restoration
+  # finishes. systemd's bounded SIGKILL escalation still applies if we hang.
+  trap '' INT TERM
   # Notify the UI before relighting the screen; cleanup may take a few seconds.
   if ! : >/run/vhp/stopping; then
     echo 'WARNING: could not signal shutdown to the dashboard.' >&2
