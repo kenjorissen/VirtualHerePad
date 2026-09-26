@@ -10,6 +10,7 @@ import sys
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -27,7 +28,9 @@ try:
     from PySide6.QtQuick import QQuickItem
     from PySide6.QtTest import QTest
     from test_backend import Harness
+    from test_packaged_backend import FakeVolume
 
+    import vhp_backend
     import vhp_keyboard
     import vhp_ui
 
@@ -81,6 +84,26 @@ class UiBackendTests(QtTestCase):
             self.assertTrue(pump(3, lambda: bridge.shared), "bridge never saw shared state")
             self.assertEqual(bridge.percent, 1)
             self.assertEqual(bridge.layout, "us")
+
+    def test_volume_event_updates_visible_brightness_without_periodic_status(self):
+        harness = Harness()
+        volume = FakeVolume(harness.brightness)
+        harness.backend.volume = volume
+        with patch.object(vhp_backend, "STATUS_INTERVAL", 60), harness:
+            bridge = self.bridge_for(harness)
+            engine = QQmlApplicationEngine()
+            engine.setInitialProperties({"vhp": bridge})
+            engine.load(QUrl.fromLocalFile(str(ROOT / "vhp_ui.qml")))
+            window = engine.rootObjects()[0]
+            self.assertTrue(pump(3, lambda: bridge.shared and bridge.percent == 1))
+            label = next(
+                item
+                for item in walk(window.contentItem())
+                if item.property("text") == "Brightness 1%"
+            )
+            os.write(volume.writer, b"+")
+            self.assertTrue(pump(1, lambda: label.property("text") == "Brightness 2%"))
+            self.assertEqual(bridge.percent, 2)
 
     def test_typing_through_the_ui_reaches_the_usb_keyboard(self):
         with Harness() as harness:

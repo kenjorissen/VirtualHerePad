@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from test_backend import Harness
 
+import vhp_backend
 import vhp_hardware
 
 
@@ -19,9 +20,10 @@ class FakeVolume:
         self.closed = False
 
     def process(self):
-        os.read(self.source, 1)
+        for event in os.read(self.source, 4096):
+            if event in (ord("+"), ord("-")):
+                self.brightness.change(1 if event == ord("+") else -1)
         self.calls += 1
-        self.brightness.change(1)
 
     def close(self):
         self.closed = True
@@ -51,6 +53,45 @@ class InstalledBackendTests(unittest.TestCase):
             self.assertEqual(harness.brightness.changes, [1])
         self.assertTrue(volume.closed)
         self.assertIsNone(harness.error)
+
+    def test_volume_changes_publish_status_without_waiting_for_periodic_tick(self):
+        harness = Harness()
+        volume = FakeVolume(harness.brightness)
+        harness.backend.volume = volume
+        with patch.object(vhp_backend, "STATUS_INTERVAL", 60), harness:
+            client = harness.connect()
+            self.addCleanup(client.close)
+            self.assertEqual(client.wait_for("status")["percent"], 1)
+            # A single read batch produces one update with its final percentage.
+            os.write(volume.writer, b"+++")
+            self.assertEqual(client.wait_for("status", timeout=1)["percent"], 4)
+            self.assertFalse(client.buffer)
+            self.assertFalse(select.select([client.socket], [], [], 0.1)[0])
+            os.write(volume.writer, b"-")
+            self.assertEqual(client.wait_for("status", timeout=1)["percent"], 3)
+            self.assertIsNone(harness.error)
+
+    def test_unchanged_volume_events_do_not_send_extra_status(self):
+        for percent, event in ((1, b"."), (100, b"+"), (0, b"-")):
+            with self.subTest(percent=percent, event=event):
+                harness = Harness()
+                harness.brightness.percent = percent
+                volume = FakeVolume(harness.brightness)
+                harness.backend.volume = volume
+                with patch.object(vhp_backend, "STATUS_INTERVAL", 60), harness:
+                    client = harness.connect()
+                    self.addCleanup(client.close)
+                    client.wait_for("status")
+                    os.write(volume.writer, event)
+                    deadline = time.monotonic() + 2
+                    while not volume.calls and time.monotonic() < deadline:
+                        time.sleep(0.01)
+                    self.assertEqual(volume.calls, 1)
+                    client.send({"op": "ping"})
+                    self.assertEqual(client.message()["op"], "pong")
+                    self.assertFalse(client.buffer)
+                    self.assertFalse(select.select([client.socket], [], [], 0.1)[0])
+                    self.assertIsNone(harness.error)
 
     def test_installed_ui_disconnect_tears_down_hardware(self):
         with Harness(installed=True) as harness:
