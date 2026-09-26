@@ -1,0 +1,379 @@
+"""Integration tests for the Qt UI bridge against a real backend.
+
+These exercise the full path a key press takes: touch -> bridge -> socket ->
+backend -> HID report. They run unprivileged by injecting fake hardware into the
+backend, and are skipped entirely when PySide6 is not installed.
+"""
+
+import os
+import sys
+import time
+import unittest
+from pathlib import Path
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "tests"))
+
+try:
+    from PySide6.QtCore import QCoreApplication, QPointF, Qt, QUrl, qInstallMessageHandler
+    from PySide6.QtGui import QGuiApplication
+    from PySide6.QtQml import QQmlApplicationEngine
+
+    # Importing QtQuick registers the QQuickItem* converter that
+    # QQuickWindow.contentItem needs; without it PySide6 raises.
+    from PySide6.QtQuick import QQuickItem
+    from PySide6.QtTest import QTest
+    from test_backend import Harness
+
+    import vhp_keyboard
+    import vhp_ui
+
+    HAVE_QT = True
+except ImportError as error:  # pragma: no cover - depends on the environment
+    HAVE_QT = False
+    IMPORT_ERROR = error
+
+KEY_A = bytes([0, 0, 4, 0, 0, 0, 0, 0])
+SHIFT_A = bytes([0b00000010, 0, 4, 0, 0, 0, 0, 0])
+
+
+def walk(item):
+    """Every item in a QML visual tree, parents before children."""
+    yield item
+    for child in item.childItems():
+        yield from walk(child)
+
+
+def pump(seconds, until=None):
+    """Run the Qt event loop for a while, optionally stopping early."""
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        QCoreApplication.processEvents()
+        if until is not None and until():
+            return True
+        time.sleep(0.01)
+    return until() if until is not None else True
+
+
+@unittest.skipUnless(HAVE_QT, "PySide6 is not installed")
+class QtTestCase(unittest.TestCase):
+    """Shared Qt application and bridge construction."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.application = QGuiApplication.instance() or QGuiApplication([])
+
+    def bridge_for(self, harness):
+        bridge = vhp_ui.Bridge(harness.options.socket)
+        # Close the socket even if an assertion fails part-way through.
+        self.addCleanup(bridge.drop)
+        return bridge
+
+
+class UiBackendTests(QtTestCase):
+    def test_bridge_connects_and_reports_backend_state(self):
+        with Harness() as harness:
+            bridge = self.bridge_for(harness)
+            self.assertTrue(pump(3, lambda: bridge.connected), "bridge never connected")
+            self.assertTrue(pump(3, lambda: bridge.shared), "bridge never saw shared state")
+            self.assertEqual(bridge.percent, 1)
+            self.assertEqual(bridge.layout, "us")
+
+    def test_typing_through_the_ui_reaches_the_usb_keyboard(self):
+        with Harness() as harness:
+            bridge = self.bridge_for(harness)
+            self.assertTrue(pump(3, lambda: bridge.shared))
+            bridge.press(4)
+            self.assertEqual(harness.gadget.reports(1), [KEY_A])
+            bridge.release(4)
+            self.assertEqual(harness.gadget.reports(1), [bytes(8)])
+
+    def test_latched_shift_travels_with_the_next_character(self):
+        with Harness() as harness:
+            bridge = self.bridge_for(harness)
+            self.assertTrue(pump(3, lambda: bridge.shared))
+            bridge.press(225)
+            bridge.release(225)
+            self.assertTrue(bridge.shiftActive)
+            # Tapping a modifier is a momentary press on the wire, and it must be
+            # released again rather than left down on the remote machine.
+            self.assertEqual(
+                harness.gadget.reports(2),
+                [bytes([0b00000010, 0, 0, 0, 0, 0, 0, 0]), bytes(8)],
+            )
+            bridge.press(4)
+            # Shift is re-applied for the next character, then cleared with it.
+            reports = harness.gadget.reports(2)
+            self.assertEqual(
+                reports,
+                [bytes([0b00000010, 0, 0, 0, 0, 0, 0, 0]), SHIFT_A],
+            )
+            bridge.release(4)
+            self.assertFalse(bridge.shiftActive)
+
+    def test_ctrl_stays_latched_across_several_keys(self):
+        with Harness() as harness:
+            bridge = self.bridge_for(harness)
+            self.assertTrue(pump(3, lambda: bridge.shared))
+            bridge.press(224)
+            bridge.release(224)
+            harness.gadget.reports(1)  # the momentary Ctrl press
+            bridge.press(6)
+            self.assertEqual(harness.gadget.reports(1)[0][0], 0b00000001)
+            bridge.release(6)
+            bridge.press(25)
+            self.assertEqual(harness.gadget.reports(1)[0][0], 0b00000001)
+
+    def test_layout_switch_changes_labels_and_reaches_the_backend(self):
+        with Harness() as harness:
+            bridge = self.bridge_for(harness)
+            self.assertTrue(pump(3, lambda: bridge.shared))
+            bridge.setLayout("de")
+            self.assertEqual(bridge.layoutName, "Deutsch")
+            labels = [key["label"] for row in bridge.rows for key in row]
+            self.assertIn("ö", labels)
+            self.assertIn("z", labels)
+            self.assertTrue(pump(3, lambda: harness.backend.layout == "de"))
+
+    def test_clear_releases_held_keys_and_resets_modifiers(self):
+        with Harness() as harness:
+            bridge = self.bridge_for(harness)
+            self.assertTrue(pump(3, lambda: bridge.shared))
+            bridge.press(225)
+            harness.gadget.reports(1)
+            bridge.clear()
+            self.assertFalse(bridge.shiftActive)
+            self.assertEqual(harness.gadget.reports(1), [bytes(8)])
+
+    def test_stopping_the_backend_is_reported_and_the_ui_recovers(self):
+        with Harness() as harness:
+            bridge = self.bridge_for(harness)
+            self.assertTrue(pump(3, lambda: bridge.shared))
+            bridge.stop()
+            harness.thread.join(timeout=3)
+            self.assertFalse(harness.thread.is_alive())
+            # The bridge must drop the connection rather than silently pretend.
+            self.assertTrue(pump(3, lambda: not bridge.connected))
+            self.assertFalse(bridge.shared)
+
+    def test_layout_metadata_matches_the_protocol(self):
+        with Harness() as harness:
+            bridge = self.bridge_for(harness)
+            names = [entry["id"] for entry in bridge.layoutNames]
+            self.assertEqual(names, ["us", "uk", "de", "fr"])
+            self.assertEqual(bridge.columns, 1000)
+
+    def test_every_row_and_span_is_exposed_to_qml(self):
+        with Harness() as harness:
+            bridge = self.bridge_for(harness)
+            rows = bridge.rows
+            self.assertEqual(len(rows), 6)
+            for row in rows:
+                self.assertEqual(sum(key["span"] for key in row), bridge.columns)
+                for key in row:
+                    self.assertIn("code", key)
+                    self.assertTrue(key["label"])
+
+
+class QmlTests(QtTestCase):
+    def test_qml_loads_without_errors_or_warnings(self):
+        messages = []
+
+        def handler(mode, context, message):
+            del mode, context
+            messages.append(message)
+
+        previous = qInstallMessageHandler(handler)
+        try:
+            with Harness() as harness:
+                bridge = self.bridge_for(harness)
+                engine = QQmlApplicationEngine()
+                engine.setInitialProperties({"vhp": bridge})
+                engine.load(QUrl.fromLocalFile(str(ROOT / "vhp_ui.qml")))
+                self.assertTrue(engine.rootObjects(), "QML produced no root object")
+                pump(0.4)
+                roots = engine.rootObjects()
+        finally:
+            qInstallMessageHandler(previous)
+        problems = [
+            message
+            for message in messages
+            if "TypeError" in message
+            or "ReferenceError" in message
+            or "is not defined" in message
+            or "Unable to assign" in message
+        ]
+        self.assertEqual(problems, [])
+        self.assertTrue(roots)
+
+    def test_the_keyboard_renders_a_keycap_per_key_and_toggles_visibility(self):
+        # A silently-empty delegate model still loads cleanly and reports no QML
+        # errors, so assert on real rendered items rather than on messages.
+        # QML items are not reachable via findChildren; walk the visual tree.
+        with Harness() as harness:
+            bridge = self.bridge_for(harness)
+            engine = QQmlApplicationEngine()
+            engine.setInitialProperties({"vhp": bridge})
+            engine.load(QUrl.fromLocalFile(str(ROOT / "vhp_ui.qml")))
+            self.assertTrue(engine.rootObjects(), "QML produced no root object")
+            window = engine.rootObjects()[0]
+            content = window.property("contentItem")
+            self.assertIsInstance(content, QQuickItem)
+
+            def rendered(name):
+                pump(0.2)
+                return [item for item in walk(content) if item.objectName() == name]
+
+            keypad = rendered("keypad")
+            self.assertEqual(len(keypad), 1)
+            # Hidden, not absent: delegate models are built either way.
+            self.assertFalse(keypad[0].property("visible"))
+
+            expected = sum(len(row) for row in vhp_keyboard.layout_grid("us"))
+            self.assertEqual(len(rendered("keycap")), expected)
+            # Counting items is not enough: an undefined divisor once made every
+            # key zero-width, so a fully invisible keyboard still passed.
+            caps = rendered("keycap")
+            self.assertTrue(
+                all(item.width() > 0 for item in caps), "every keycap must have a real width"
+            )
+            self.assertTrue(
+                all(item.height() > 0 for item in caps), "every keycap must have a real height"
+            )
+            self.assertEqual(window.property("columns"), bridge.columns)
+            labels = {item.property("text") for item in rendered("keycapLabel")}
+            self.assertIn("a", labels)
+            self.assertIn("Space", labels)
+
+            toggle = rendered("keyboardToggle")[0]
+            position = toggle.mapToScene(QPointF(toggle.width() / 2, toggle.height() / 2)).toPoint()
+            QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, position)
+            self.assertTrue(rendered("keypad")[0].property("visible"))
+            self.assertEqual(len(rendered("keycap")), expected)
+
+            QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, position)
+            self.assertFalse(rendered("keypad")[0].property("visible"))
+
+    def test_real_touch_events_reference_count_and_hide_releases_keys(self):
+        with Harness() as harness:
+            bridge = self.bridge_for(harness)
+            engine = QQmlApplicationEngine()
+            engine.setInitialProperties({"vhp": bridge})
+            engine.load(QUrl.fromLocalFile(str(ROOT / "vhp_ui.qml")))
+            window = engine.rootObjects()[0]
+            self.assertTrue(pump(3, lambda: bridge.shared))
+            window.setProperty("keyboardOpen", True)
+            pump(0.2)
+            label = next(
+                item
+                for item in walk(window.contentItem())
+                if item.objectName() == "keycapLabel" and item.property("text") == "a"
+            )
+            position = label.mapToScene(QPointF(label.width() / 2, label.height() / 2)).toPoint()
+            # Focus changes can send an initial clear. Drain only the fixture pipe.
+            import select
+
+            while select.select([harness.gadget.read_fd], [], [], 0)[0]:
+                os.read(harness.gadget.read_fd, 4096)
+            device = QTest.createTouchDevice()
+            sequence = QTest.touchEvent(window, device)
+            sequence.press(0, position, window).commit()
+            pump(0.1)
+            self.assertEqual(harness.gadget.reports(1), [KEY_A])
+            sequence.stationary(0).press(1, position, window).commit()
+            pump(0.1)
+            self.assertFalse(select.select([harness.gadget.read_fd], [], [], 0.1)[0])
+            sequence.release(0, position, window).stationary(1).commit()
+            pump(0.1)
+            self.assertFalse(select.select([harness.gadget.read_fd], [], [], 0.1)[0])
+            sequence.release(1, position, window).commit()
+            pump(0.1)
+            self.assertEqual(harness.gadget.reports(1), [bytes(8)])
+            sequence.press(0, position, window).commit()
+            pump(0.1)
+            self.assertEqual(harness.gadget.reports(1), [KEY_A])
+            window.setProperty("keyboardOpen", False)
+            pump(0.1)
+            self.assertEqual(harness.gadget.reports(1), [bytes(8)])
+            sequence.release(0, position, window).commit()
+
+    def test_quit_requires_an_uninterrupted_two_second_hold(self):
+        with Harness() as harness:
+            bridge = self.bridge_for(harness)
+            engine = QQmlApplicationEngine()
+            engine.setInitialProperties({"vhp": bridge})
+            engine.load(QUrl.fromLocalFile(str(ROOT / "vhp_ui.qml")))
+            window = engine.rootObjects()[0]
+            # Observe the quit request without quitting the shared test application.
+            engine.quit.disconnect()
+            quits = []
+            engine.quit.connect(lambda: quits.append(True))
+            self.assertTrue(pump(3, lambda: bridge.shared))
+            button = next(
+                item for item in walk(window.contentItem()) if item.objectName() == "holdQuit"
+            )
+            position = button.mapToScene(QPointF(button.width() / 2, button.height() / 2)).toPoint()
+            self.assertEqual(button.property("holdMilliseconds"), 2000)
+
+            QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, position)
+            pump(2.2)
+            self.assertEqual(quits, [])
+            self.assertTrue(harness.thread.is_alive())
+
+            QTest.mousePress(window, Qt.LeftButton, Qt.NoModifier, position)
+            pump(0.3)
+            outside = button.mapToScene(QPointF(-20, button.height() / 2)).toPoint()
+            QTest.mouseMove(window, outside)
+            pump(2.2)
+            self.assertEqual(quits, [])
+            QTest.mouseRelease(window, Qt.LeftButton, Qt.NoModifier, outside)
+
+            QTest.mousePress(window, Qt.LeftButton, Qt.NoModifier, position)
+            pump(1)
+            self.assertEqual(quits, [])
+            self.assertTrue(pump(2, lambda: bool(quits)))
+            self.assertEqual(quits, [True])
+            QTest.mouseRelease(window, Qt.LeftButton, Qt.NoModifier, position)
+            harness.thread.join(timeout=3)
+            self.assertFalse(harness.thread.is_alive())
+
+    def test_qml_declares_the_bridge_as_a_required_property(self):
+        # Context properties are cleared before the object tree is destroyed,
+        # which makes every binding re-evaluate against a null at shutdown.
+        source = (ROOT / "vhp_ui.qml").read_text()
+        self.assertIn("required property var vhp", source)
+        self.assertNotIn("setContextProperty", (ROOT / "vhp_ui.py").read_text())
+
+
+@unittest.skipUnless(HAVE_QT, "PySide6 is not installed")
+class PlatformTests(unittest.TestCase):
+    def test_wayland_is_preferred_when_nothing_was_requested(self):
+        environment = {"WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0"}
+        self.assertTrue(vhp_ui.prefer_wayland(environment))
+        self.assertEqual(environment["QT_QPA_PLATFORM"], "wayland")
+
+    def test_an_explicit_platform_always_wins(self):
+        for platform in ("offscreen", "xcb", "wayland", "minimal"):
+            with self.subTest(platform=platform):
+                environment = {"WAYLAND_DISPLAY": "wayland-0", "QT_QPA_PLATFORM": platform}
+                self.assertFalse(vhp_ui.prefer_wayland(environment))
+                self.assertEqual(environment["QT_QPA_PLATFORM"], platform)
+
+    def test_nothing_changes_without_a_wayland_session(self):
+        for environment in ({}, {"DISPLAY": ":0"}, {"WAYLAND_DISPLAY": ""}):
+            with self.subTest(environment=environment):
+                before = dict(environment)
+                self.assertFalse(vhp_ui.prefer_wayland(environment))
+                self.assertEqual(environment, before)
+
+    def test_wayland_is_chosen_before_qt_picks_a_backend(self):
+        # Setting QT_QPA_PLATFORM after QGuiApplication exists has no effect.
+        source = (ROOT / "vhp_ui.py").read_text()
+        self.assertLess(source.index("prefer_wayland()"), source.index("QGuiApplication(sys.argv"))
+
+
+if __name__ == "__main__":
+    unittest.main()

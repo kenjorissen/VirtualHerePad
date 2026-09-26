@@ -21,7 +21,13 @@ class LifecycleTests(unittest.TestCase):
     def test_touch_request_stops_service_and_restores_brightness(self):
         self.exercise(kill_launcher=False, touch_exit=True)
 
-    def exercise(self, kill_launcher, touch_exit=False):
+    def test_keyboard_backend_exit_stops_server_and_restores_brightness(self):
+        self.exercise(kill_launcher=False, keyboard_exit=True)
+
+    def test_keyboard_launcher_sigkill_stops_backend_and_restores_brightness(self):
+        self.exercise(kill_launcher=True, keyboard=True)
+
+    def exercise(self, kill_launcher, touch_exit=False, keyboard=False, keyboard_exit=False):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
             runtime = folder / "runtime"
@@ -46,6 +52,17 @@ class LifecycleTests(unittest.TestCase):
                 f"Path({str(monitor_ready)!r}).touch()\n"
                 "while True: time.sleep(60)\n"
             )
+            backend = folder / "backend.py"
+            backend_ready = folder / "backend-ready"
+            backend.write_text(
+                "import os, time\nfrom pathlib import Path\n"
+                f"Path({str(backend_ready)!r}).write_text(str(os.getpid()))\n"
+                + ("time.sleep(0.3)\n" if keyboard_exit else "while True: time.sleep(60)\n")
+            )
+            if keyboard or keyboard_exit:
+                selection = folder / "runtime-launch"
+                selection.mkdir()
+                (selection / "mode").write_text("keyboard\n")
             helper = folder / "helper"
             source = (ROOT / "vhp-root").read_text()
             source = source.replace("[[ $EUID == 0 && $# == 1 ]]", "[[ $# == 1 ]]")
@@ -54,7 +71,10 @@ class LifecycleTests(unittest.TestCase):
             source = source.replace("/home/.vhp/bin/vhusbdx86_64", str(server))
             source = source.replace("/home/.vhp/data/brightness-percent", str(preference))
             source = source.replace("/home/.vhp/bin/touch-stop.py", str(monitor))
+            source = source.replace("/home/.vhp/bin/vhp_backend.py", str(backend))
             source = source.replace('exec /usr/bin/systemctl "$1" vhp.service', "exit 0")
+            start_block = source.split("  start | start-keyboard)", 1)[1].split("  stop)", 1)[0]
+            source = source.replace(start_block, "\n    exit 0\n    ;;\n")
             helper.write_text(source)
             helper.chmod(0o755)
             # sudo and systemctl mocks let the unmodified launcher loop run unprivileged.
@@ -111,7 +131,7 @@ class LifecycleTests(unittest.TestCase):
                             self.fail("Mock touchscreen monitor did not become ready")
                         time.sleep(0.02)
                     (runtime / "touch-stop").touch()
-                else:
+                elif not keyboard_exit:
                     service.send_signal(signal.SIGTERM)
                 output, _ = service.communicate(timeout=17)
                 self.assertEqual(service.returncode, 0, output)
@@ -122,6 +142,12 @@ class LifecycleTests(unittest.TestCase):
                     self.assertIn("heartbeat expired", output)
                 if touch_exit:
                     self.assertIn("Touchscreen requested shutdown.", output)
+                if keyboard_exit:
+                    self.assertIn("Keyboard backend exited", output)
+                if keyboard or keyboard_exit:
+                    self.assertTrue(backend_ready.exists())
+                    with self.assertRaises(ProcessLookupError):
+                        os.kill(int(backend_ready.read_text()), 0)
                 self.assertIn("Saved backlight brightness=73", output)
                 self.assertIn("Restored backlight brightness=73", output)
                 self.assertEqual(brightness.read_text().strip(), "73")

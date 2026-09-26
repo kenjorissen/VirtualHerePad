@@ -1,0 +1,152 @@
+"""Safety regressions for installed backend; no hardware/root access."""
+
+import os
+import select
+import time
+import unittest
+from unittest.mock import patch
+
+from test_backend import Harness
+
+import vhp_hardware
+
+
+class FakeVolume:
+    def __init__(self, brightness):
+        self.source, self.writer = os.pipe()
+        self.brightness = brightness
+        self.calls = 0
+        self.closed = False
+
+    def process(self):
+        os.read(self.source, 1)
+        self.calls += 1
+        self.brightness.change(1)
+
+    def close(self):
+        self.closed = True
+        os.close(self.source)
+        os.close(self.writer)
+
+
+class InstalledBackendTests(unittest.TestCase):
+    def test_volume_fd_is_serviced_and_released(self):
+        harness = Harness()
+        volume = FakeVolume(harness.brightness)
+        harness.backend.volume = volume
+        with harness:
+            os.write(volume.writer, b"+")
+            end = time.monotonic() + 2
+            while not volume.calls and time.monotonic() < end:
+                time.sleep(0.01)
+            self.assertEqual(volume.calls, 1)
+            self.assertEqual(harness.brightness.changes, [1])
+        self.assertTrue(volume.closed)
+        self.assertIsNone(harness.error)
+
+    def test_installed_ui_disconnect_tears_down_hardware(self):
+        with Harness(installed=True) as harness:
+            client = harness.connect()
+            client.wait_for("status")
+            client.close()
+            harness.thread.join(timeout=2)
+            self.assertFalse(harness.thread.is_alive())
+            self.assertTrue(harness.gadget.closed)
+            self.assertFalse(harness.options.socket.exists())
+            self.assertIsNone(harness.error)
+
+    def test_reconnect_discards_partial_previous_frame(self):
+        with Harness() as harness:
+            first = harness.connect()
+            first.wait_for("status")
+            first.raw(b'{"op":')
+            first.close()
+            end = time.monotonic() + 2
+            while harness.backend.connection is not None and time.monotonic() < end:
+                time.sleep(0.01)
+            second = harness.connect()
+            self.addCleanup(second.close)
+            second.wait_for("status")
+            second.send({"op": "ping"})
+            second.wait_for("pong")
+
+    def test_ownership_is_checked_at_write_even_before_next_status(self):
+        harness = Harness()
+        try:
+            backend = harness.backend
+            backend.shared = True
+            backend.press(4, True)
+            self.assertEqual(len(backend.reports), 1)
+            harness.gadget.is_shared = False
+            backend.flush_report()
+            self.assertFalse(select.select([harness.gadget.read_fd], [], [], 0)[0])
+            self.assertFalse(backend.reports)
+            self.assertFalse(backend.keys.keys)
+            backend.handle({"op": "clear"})
+            backend.disconnect()
+            self.assertFalse(select.select([harness.gadget.read_fd], [], [], 0)[0])
+        finally:
+            harness.backend.close(None)
+            harness.temporary.cleanup()
+
+    def test_backpressure_preserves_report_order_and_short_write_fails(self):
+        harness = Harness()
+        try:
+            backend = harness.backend
+            backend.press(4, True)
+            backend.press(4, False)
+            with patch("vhp_backend.os.write", side_effect=BlockingIOError):
+                backend.flush_report()
+            self.assertEqual(len(backend.reports), 2)
+            backend.flush_report()
+            backend.flush_report()
+            self.assertEqual(harness.gadget.reports(2), [bytes([0, 0, 4, 0, 0, 0, 0, 0]), bytes(8)])
+            backend.press(4, True)
+            with patch("vhp_backend.os.write", return_value=4), self.assertRaises(OSError):
+                backend.flush_report()
+        finally:
+            harness.backend.close(None)
+            harness.temporary.cleanup()
+
+    def test_cleanup_failure_still_closes_gadget(self):
+        harness = Harness()
+        try:
+            with patch.object(harness.brightness, "save", side_effect=OSError("disk full")):
+                harness.backend.close(None)
+            self.assertTrue(harness.gadget.closed)
+        finally:
+            harness.temporary.cleanup()
+
+
+class VolumeEventsTests(unittest.TestCase):
+    def test_volume_is_consumed_and_other_keys_are_forwarded(self):
+        harness = Harness()
+        source, writer = os.pipe()
+        output, virtual = os.pipe()
+        bridge = vhp_hardware.VolumeBridge.__new__(vhp_hardware.VolumeBridge)
+        bridge.source, bridge.virtual = source, virtual
+        bridge.brightness = harness.brightness
+        bridge.held = set()
+        bridge.dropped = False
+        events = [
+            (1, 115, 1),
+            (1, 115, 2),
+            (1, 115, 0),
+            (1, 30, 1),
+            (0, 0, 0),
+            (1, 30, 0),
+            (0, 0, 0),
+        ]
+        try:
+            os.write(writer, b"".join(vhp_hardware.EVENT.pack(0, 0, *event) for event in events))
+            bridge.process()
+            forwarded = list(vhp_hardware.EVENT.iter_unpack(os.read(output, 4096)))
+            self.assertEqual([item[2:] for item in forwarded], events[3:])
+            self.assertEqual(harness.brightness.changes, [1, 1])
+            self.assertFalse(bridge.held)
+            self.assertEqual(harness.brightness.saves, 1)
+        finally:
+            for fd in (source, writer, output, virtual):
+                os.close(fd)
+            harness.backend.close(None)
+            harness.temporary.cleanup()

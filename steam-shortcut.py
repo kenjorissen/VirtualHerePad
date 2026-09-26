@@ -77,7 +77,9 @@ def number(key, value):
     return (2, key.encode(), struct.pack("<I", value))
 
 
-def update(data, install_dir):
+def update(data, install_dir, mode="terminal"):
+    if mode not in ("keyboard", "terminal"):
+        raise ValueError("Invalid interface mode")
     root = decode(data) if data else [(0, b"shortcuts", [])]
     containers = [v for t, k, v in root if t == 0 and k == b"shortcuts"]
     if len(containers) != 1:
@@ -95,6 +97,8 @@ def update(data, install_dir):
             or b"/vhp.sh" in values.get(b"exe", b"")
             or b"/vhp-gui.sh" in values.get(b"LaunchOptions", b"")
             or b"/vhp-gui.sh" in values.get(b"exe", b"")
+            or b"/vhp-launch.sh" in values.get(b"LaunchOptions", b"")
+            or b"/vhp-launch.sh" in values.get(b"exe", b"")
         ):
             matches.append(i)
     if len(matches) > 1:
@@ -110,7 +114,7 @@ def update(data, install_dir):
         text("StartDir", f'"{path}"'),
         text(
             "LaunchOptions",
-            f'-u LD_PRELOAD "{path}/vhp-gui.sh"',
+            f'-u LD_PRELOAD "{path}/vhp-launch.sh" --{mode}',
         ),
         number("AllowOverlay", 1),
     ]
@@ -251,6 +255,9 @@ def save(path, data):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--account", help="numeric Steam userdata directory name")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--keyboard", dest="mode", action="store_const", const="keyboard")
+    modes.add_argument("--terminal", dest="mode", action="store_const", const="terminal")
     parser.add_argument(
         "--check",
         action="store_true",
@@ -281,7 +288,15 @@ def main():
         print(f"Steam account ready: {account}; shortcuts: {path}")
         return
     install_dir = Path.home() / ".local/share/VirtualHerePad"
-    for name in ("vhp.sh", "vhp-gui.sh"):
+    mode = args.mode
+    if mode is None:
+        preference = install_dir / "launch-mode"
+        mode = preference.read_text().strip() if preference.exists() else "terminal"
+    if mode not in ("keyboard", "terminal"):
+        parser.error("Invalid saved interface; choose --keyboard or --terminal")
+    if mode == "keyboard" and not (install_dir / "pylib/PySide6").is_dir():
+        parser.error("Keyboard runtime missing; run setup.sh --keyboard first")
+    for name in ("vhp.sh", "vhp-gui.sh", "vhp-launch.sh"):
         launcher = install_dir / name
         if not launcher.is_file() or not os.access(launcher, os.X_OK):
             parser.error(
@@ -292,7 +307,7 @@ def main():
     except ValueError as exc:
         parser.error(str(exc))
     original = path.read_bytes() if path.exists() else b""
-    changed = update(original, install_dir)
+    changed = update(original, install_dir, mode)
     if changed == original:
         print(
             "VirtualHerePad shortcut is already up to date. In Gaming Mode: Library > Non-Steam > VirtualHerePad."
@@ -302,7 +317,7 @@ def main():
     if steam_running():
         parser.error("Steam started during setup; shortcut not changed")
     save(path, changed)
-    print(f"VirtualHerePad shortcut installed for account {account}.")
+    print(f"VirtualHerePad shortcut installed for account {account} ({mode}).")
     print("After restarting Steam, find it in Gaming Mode: Library > Non-Steam > VirtualHerePad.")
     print("It may not appear on Home / Recently Played until you launch it.")
     offer_start_steam()
