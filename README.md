@@ -5,7 +5,8 @@ launches from Steam, lowers the screen brightness, shows a battery/status
 dashboard, and inhibits normal sleep while sharing. Choose the **touch keyboard +
 dashboard** or the lightweight **terminal dashboard**. Both use one Steam shortcut
 and the same VirtualHere service, license, brightness preference, and cleanup.
-Hold a screen corner to stop and restore the original brightness.
+Hold the keyboard UI's quit button—or a screen corner in terminal mode—to stop
+and restore the original brightness.
 
 ## What is VirtualHere?
 
@@ -82,8 +83,8 @@ Setup checks Qt compatibility; gadget support is checked at launch.
    `VirtualHerePad` with filters that include non-Steam games.
 6. **Connect the gaming PC.** Follow the [Windows client steps](#windows-client-quick-start)
    below and leave the Deck's launcher running.
-7. **Stop when finished.** Hold **one finger in any screen corner for two
-   seconds**, or hold **HOLD 2s TO QUIT** in the keyboard interface.
+7. **Stop when finished.** In terminal mode, hold **one finger in any screen
+   corner for two seconds**. In keyboard mode, hold **HOLD 2s TO QUIT**.
    VHP stops sharing and restores brightness.
 
 Steam runs the installed `vhp-launch.sh --keyboard` or `vhp-launch.sh --terminal` under
@@ -157,14 +158,15 @@ it before changing the installed service.
    VirtualHerePad on the Deck.
 3. In the client's device tree, right-click **Steam Controller** (the label may
    include **Valve Software**) and select **Use**. Keep the touchscreen local—you
-   need it for the corner-hold exit gesture.
+   need it for the keyboard UI or terminal mode's corner-hold exit gesture.
 4. In keyboard mode, also select **Use** on **VHP Touch Keyboard**. A licensed
    VirtualHere server is required to share it alongside the controller—these are
    **two devices**, each selected separately in the client. A license is strongly
    recommended for controller-only use too; see [licensing](#virtualhere-licensing).
 5. Configure the controller through Steam/Steam Input on the PC as needed, then
    play. Stopping use in the client disconnects the controller; use the Deck's
-   corner-hold gesture to stop VHP itself.
+   quit button (keyboard mode) or corner-hold gesture (terminal mode) to stop VHP
+   itself.
 
 If the server doesn't appear, see [Connection troubleshooting](#connection-troubleshooting).
 
@@ -199,10 +201,10 @@ held; releasing early, sliding off, or losing focus cancels the hold.
   deliberately racing local driver.
 
 The root backend is a supervised child of `vhp.service`, not a separately run
-terminal command. Closing/crashing the UI ends the backend; backend failure,
-corner exit, and heartbeat expiry stop the whole service. `vhp-gui-sandbox.sh`
-is only a compatibility alias for the installed launcher, not an installer or
-root-checkout runner.
+terminal command. Closing/crashing the UI ends the backend; the quit button,
+backend failure, and heartbeat expiry stop the whole service. Keyboard mode does
+not run the corner-hold monitor. `vhp-gui-sandbox.sh` is only a compatibility alias
+for the installed launcher, not an installer or root-checkout runner.
 
 **Coverage is not a promise of exhaustive testing.** Layout legends are based on
 published Windows tables; Linux/macOS mappings and IMEs can differ. I want to
@@ -259,14 +261,14 @@ While VHP is running, the service requests systemd inhibition of **sleep** and
 blanking policies and forced suspension may behave differently. A mostly static
 image can remain on screen for the whole session; consider OLED burn-in risk.
 
-For corner-hold exit, keep one finger within the outer **12% of both screen axes**
-for two seconds. Releasing, moving out, or adding another finger cancels it.
+For **terminal mode's** corner-hold exit, keep one finger within the outer **12%
+of both screen axes** for two seconds. Releasing, moving out, or adding another finger cancels it.
 After multiple fingers, lift them all before retrying. A finger already down at
 startup must also lift first. All four corners work regardless of rotation.
 
-**Fallbacks:** use a local Bluetooth keyboard and **Ctrl+C**, or **Steam > Exit
-Game** if you can reach the local menu. The Deck's Steam button may be forwarded
-to the PC instead. From Konsole or SSH, you can also run:
+**Fallbacks:** in terminal mode, use a local Bluetooth keyboard and **Ctrl+C**.
+In either mode, use **Steam > Exit Game** if you can reach the local menu. The
+Deck's Steam button may be forwarded to the PC instead. From Konsole or SSH, you can also run:
 
 ```bash
 sudo -n /home/.vhp/bin/vhp-root stop
@@ -556,8 +558,8 @@ installation verifies the publisher's current download against its SHA1SUM.
 Tests use temporary files and mock services, not USB devices or root access.
 They do not install/start the real VHP service. Shortcut tests reject unmocked
 input and process launches; stdout/stderr is shown only on failure. For hardware
-changes, verify launch, client connection, corner-hold exit, brightness/terminal
-restoration, and forced-launcher cleanup on the Deck. Qt tests need a private
+changes, verify launch, client connection, the selected mode's quit control,
+brightness/terminal restoration, and forced-launcher cleanup on the Deck. Qt tests need a private
 PySide6 runtime and `QT_QPA_PLATFORM=offscreen`; without it they are explicitly
 skipped. Run both Qt-enabled and standard-library suites before shipping.
 

@@ -251,7 +251,7 @@ Window {
         Text {
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
-            text: "Hold any corner for 2s to exit · Volume buttons adjust brightness\nTCP connections do not indicate controller ownership"
+            text: "Volume buttons adjust brightness\nTCP connections do not indicate controller ownership"
             color: "#8fb4d0"
             font.pixelSize: window.height * 0.023
         }

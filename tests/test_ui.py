@@ -443,6 +443,11 @@ class QmlTests(QtTestCase):
             )
             position = button.mapToScene(QPointF(button.width() / 2, button.height() / 2)).toPoint()
             self.assertEqual(button.property("holdMilliseconds"), 2000)
+            text = "\n".join(
+                str(item.property("text") or "") for item in walk(window.contentItem())
+            )
+            self.assertIn("HOLD 2s TO QUIT", text)
+            self.assertNotIn("corner", text.lower())
 
             QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, position)
             pump(2.2)

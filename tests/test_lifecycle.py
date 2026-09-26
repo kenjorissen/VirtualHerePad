@@ -21,6 +21,9 @@ class LifecycleTests(unittest.TestCase):
     def test_touch_request_stops_service_and_restores_brightness(self):
         self.exercise(kill_launcher=False, touch_exit=True)
 
+    def test_keyboard_ignores_corner_requests_and_does_not_start_touch_monitor(self):
+        self.exercise(kill_launcher=False, keyboard=True, touch_exit=True)
+
     def test_keyboard_backend_exit_stops_server_and_restores_brightness(self):
         self.exercise(kill_launcher=False, keyboard_exit=True)
 
@@ -126,11 +129,18 @@ class LifecycleTests(unittest.TestCase):
                     # The real monitor starts only after stale requests are cleared.
                     # Brightness alone does not establish that startup has finished.
                     deadline = time.monotonic() + 3
-                    while not monitor_ready.exists():
+                    ready = backend_ready if keyboard else monitor_ready
+                    while not ready.exists():
                         if time.monotonic() > deadline or service.poll() is not None:
-                            self.fail("Mock touchscreen monitor did not become ready")
+                            self.fail("Mock input child did not become ready")
                         time.sleep(0.02)
                     (runtime / "touch-stop").touch()
+                    if keyboard:
+                        # Cover at least one service-loop iteration with the marker present.
+                        time.sleep(1.2)
+                        self.assertIsNone(service.poll(), "Keyboard mode honored a corner request")
+                        self.assertFalse((runtime / "stopping").exists())
+                        service.send_signal(signal.SIGTERM)
                 elif not keyboard_exit:
                     service.send_signal(signal.SIGTERM)
                 output, _ = service.communicate(timeout=17)
@@ -141,10 +151,14 @@ class LifecycleTests(unittest.TestCase):
                 if kill_launcher:
                     self.assertIn("heartbeat expired", output)
                 if touch_exit:
-                    self.assertIn("Touchscreen requested shutdown.", output)
+                    if keyboard:
+                        self.assertNotIn("Touchscreen requested shutdown.", output)
+                    else:
+                        self.assertIn("Touchscreen requested shutdown.", output)
                 if keyboard_exit:
                     self.assertIn("Keyboard backend exited", output)
                 if keyboard or keyboard_exit:
+                    self.assertFalse(monitor_ready.exists(), "Keyboard mode started corner monitor")
                     self.assertTrue(backend_ready.exists())
                     with self.assertRaises(ProcessLookupError):
                         os.kill(int(backend_ready.read_text()), 0)

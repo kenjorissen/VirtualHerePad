@@ -192,10 +192,13 @@ rm -f /run/vhp/stopping
 heartbeat
 apply_brightness
 
-# This root-only marker is checked in the existing heartbeat loop (no extra polling).
+# Only terminal mode needs corner-hold exit; the keyboard UI has its own quit button.
+# The root-only marker is checked in the existing heartbeat loop (no extra polling).
 rm -f /run/vhp/touch-stop
-/usr/bin/python3 -I /home/.vhp/bin/touch-stop.py &
-touch_monitor=$!
+if [[ $mode == terminal ]]; then
+  /usr/bin/python3 -I /home/.vhp/bin/touch-stop.py &
+  touch_monitor=$!
+fi
 /home/.vhp/bin/vhusbdx86_64 -c /home/.vhp/data/config.ini &
 child=$!
 if [[ $mode == keyboard ]]; then
@@ -208,7 +211,7 @@ while kill -0 "$child" 2>/dev/null; do
     wait "$keyboard_backend"
     exit $?
   fi
-  if [[ -f /run/vhp/touch-stop ]]; then
+  if [[ $mode == terminal && -f /run/vhp/touch-stop ]]; then
     echo 'Touchscreen requested shutdown.'
     exit 0
   fi

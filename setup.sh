@@ -379,6 +379,10 @@ echo 'Galileo OLED with max 599000 uses measured steps; other models/ranges use 
 echo 'Existing brightness preferences are preserved. VHP does not fight Steam adaptive brightness.'
 echo 'If the screen relights, check Steam > Settings > Display > Enable Adaptive Brightness.'
 echo 'That setting is yours to change; setup leaves it untouched.'
-echo 'Tip: keep the launcher open; hold one finger in any screen corner for 2 seconds to stop.'
-echo 'Fallback: use a local keyboard and Ctrl+C to stop.'
+if [[ $mode == keyboard ]]; then
+  echo 'Tip: keep the launcher open; hold the HOLD 2s TO QUIT button to stop.'
+else
+  echo 'Tip: keep the launcher open; hold one finger in any screen corner for 2 seconds to stop.'
+  echo 'Fallback: use a local keyboard and Ctrl+C to stop.'
+fi
 echo 'The Deck Steam button may be forwarded to the VirtualHere client.'
