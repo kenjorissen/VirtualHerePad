@@ -30,6 +30,14 @@ class FakeVolume:
 
 
 class InstalledBackendTests(unittest.TestCase):
+    def test_existing_loop_services_brightness_watch_even_when_idle(self):
+        with Harness() as harness:
+            deadline = time.monotonic() + 2
+            while not harness.brightness.checks and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertGreater(harness.brightness.checks, 0)
+            self.assertIsNone(harness.error)
+
     def test_volume_fd_is_serviced_and_released(self):
         harness = Harness()
         volume = FakeVolume(harness.brightness)

@@ -122,7 +122,7 @@ if ! python3 tools/steam-shortcut.py --check; then
   echo 'Log into Steam once, or use --account ID with tools/steam-shortcut.py if prompted.'
 fi
 echo 'Preflight passed. No Steam processes were stopped.'
-echo 'Display note: Steam adaptive brightness may override VHP screen dimming.'
+echo 'Display note: VHP maintains its selected brightness while running; disable Steam adaptive brightness to avoid competing changes.'
 echo 'Its current setting is not checked or changed. You can leave it enabled.'
 
 tmp=$(mktemp -d)
@@ -378,8 +378,8 @@ else
 fi
 echo 'Display: defaults to 1%; edit /home/.vhp/data/brightness-percent (0-100) with sudo.'
 echo 'Galileo OLED with max 599000 uses measured steps; other models/ranges use generic gamma 2.2.'
-echo 'Existing brightness preferences are preserved. VHP does not fight Steam adaptive brightness.'
-echo 'If the screen relights, check Steam > Settings > Display > Enable Adaptive Brightness.'
+echo 'Existing brightness preferences are preserved. VHP checks brightness once per second and corrects external changes.'
+echo 'Disable Steam > Settings > Display > Enable Adaptive Brightness to avoid competing adjustments.'
 echo 'That setting is yours to change; setup leaves it untouched.'
 if [[ $mode == keyboard ]]; then
   echo 'Tip: keep the launcher open; hold the HOLD 2s TO QUIT button to stop.'

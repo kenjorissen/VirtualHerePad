@@ -18,6 +18,9 @@ class LifecycleTests(unittest.TestCase):
     def test_service_term_restores_brightness(self):
         self.exercise(kill_launcher=False)
 
+    def test_terminal_corrects_external_brightness_and_restores_original_on_exit(self):
+        self.exercise(kill_launcher=False, brightness_reset=True)
+
     def test_touch_request_stops_service_and_restores_brightness(self):
         self.exercise(kill_launcher=False, touch_exit=True)
 
@@ -30,7 +33,14 @@ class LifecycleTests(unittest.TestCase):
     def test_keyboard_launcher_sigkill_stops_backend_and_restores_brightness(self):
         self.exercise(kill_launcher=True, keyboard=True)
 
-    def exercise(self, kill_launcher, touch_exit=False, keyboard=False, keyboard_exit=False):
+    def exercise(
+        self,
+        kill_launcher,
+        touch_exit=False,
+        keyboard=False,
+        keyboard_exit=False,
+        brightness_reset=False,
+    ):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
             runtime = folder / "runtime"
@@ -111,6 +121,13 @@ class LifecycleTests(unittest.TestCase):
                         self.fail("Mock service failed to dim brightness")
                     time.sleep(0.02)
                 self.assertFalse((runtime / "stopping").exists())
+                if brightness_reset:
+                    brightness.write_text("140\n")
+                    deadline = time.monotonic() + 3
+                    while brightness.read_text().strip() != "1":
+                        if time.monotonic() > deadline or service.poll() is not None:
+                            self.fail("External brightness change was not corrected")
+                        time.sleep(0.02)
                 if kill_launcher:
                     env = dict(os.environ, PATH=f"{folder}:" + os.environ["PATH"])
                     client = subprocess.Popen(
@@ -162,6 +179,8 @@ class LifecycleTests(unittest.TestCase):
                     self.assertTrue(backend_ready.exists())
                     with self.assertRaises(ProcessLookupError):
                         os.kill(int(backend_ready.read_text()), 0)
+                if brightness_reset:
+                    self.assertIn("Backlight changed externally (140)", output)
                 self.assertIn("Saved backlight brightness=73", output)
                 self.assertIn("Restored backlight brightness=73", output)
                 self.assertEqual(brightness.read_text().strip(), "73")

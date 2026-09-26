@@ -74,8 +74,8 @@ Setup checks Qt compatibility; gadget support is checked at launch.
    Steam when prompted, or open it yourself. If you already have a VirtualHere
    config/license, [import it](#virtualhere-config-and-license) before launching.
 4. **Disable adaptive brightness.** In **Gaming Mode**, turn off **Steam >
-   Settings > Display > Enable Adaptive Brightness** so Steam doesn't override
-   VHP's brightness setting. Setup leaves this preference untouched; you can
+   Settings > Display > Enable Adaptive Brightness** to avoid repeated brightness
+   changes while VHP maintains its selected level. Setup leaves this preference untouched; you can
    re-enable it after sharing.
 5. **Find and launch it.** Open **Library > Non-Steam > VirtualHerePad > Play**.
    **Don't look only at Home / Recently Played:** a new shortcut may not appear
@@ -320,15 +320,27 @@ measured upper plateau, slightly below the hardware maximum. On the generic
 curve, `0` writes hardware zero (the screen may go dark) and `100` writes the
 hardware maximum. Small values can also round to zero on coarse hardware ranges.
 
-Brightness is set **at startup and on keyboard-mode volume-button events**, not
-continuously. The selected mapping is logged. Button changes are saved on release
-and clean shutdown. VHP does not fight Steam's adaptive brightness control.
+Brightness is set at startup and on keyboard-mode volume-button events. While
+running, VHP checks the requested backlight value **about once per second** using
+its existing service/backend loops and rewrites it **only if it differs from the
+selected level**. No extra watcher process is started.
+
+The selected percentage is the target: volume buttons adjust that percentage
+immediately, and the watcher follows the new target even before it is saved.
+External brightness changes do not become the target. Button changes are saved
+on release and clean shutdown. Terminal mode maintains its startup selection.
+
+Corrections and read/write failures are logged to the service journal, at most
+once per 30 seconds. A watch failure does not stop controller sharing. This
+actively overrides other brightness controls while VHP is running; disabling
+Steam adaptive brightness avoids competing adjustments and visible flicker.
+The watcher does not identify which process changed brightness.
 
 Missing or invalid preferences log a warning and fall back to 1%. Parsing is
 bounded to six bytes, rejects excess/binary data and non-regular files, and never
 executes the contents. A trailing LF or CRLF is accepted.
 
-The original brightness is saved and restored on normal exit; values are logged
+The watcher stops before the original brightness is restored on normal exit; values are logged
 in the journal. If the saved value was already zero, exit restores zero. Dimming
 currently uses `amdgpu_bl0` and is skipped if its brightness/maximum is unavailable.
 Power loss or forcibly killing the privileged service itself can prevent cleanup.

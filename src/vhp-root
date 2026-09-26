@@ -116,6 +116,8 @@ VHP_TARGET
 
 apply_brightness() {
   local maximum percent target
+  brightness_target_raw=''
+  next_brightness_notice=0
   percent=$(read_brightness_percent)
   if [[ -r "$BRIGHTNESS_FILE" && -w "$BRIGHTNESS_FILE" &&
     -r "${BRIGHTNESS_FILE%/*}/max_brightness" ]]; then
@@ -136,6 +138,7 @@ apply_brightness() {
       echo 'WARNING: backlight was already zero at startup; exit will restore zero.' >&2
     fi
     if printf '%s\n' "$target" >"$BRIGHTNESS_FILE"; then
+      brightness_target_raw=$target
       echo "Set backlight to configured $percent% ($target of $maximum)."
     else
       echo 'WARNING: could not set backlight brightness.' >&2
@@ -143,6 +146,29 @@ apply_brightness() {
   else
     echo "WARNING: backlight unavailable: $BRIGHTNESS_FILE" >&2
   fi
+}
+
+maintain_brightness() {
+  local now=$1 current='' message
+  [[ -n ${brightness_target_raw:-} && ! -f /run/vhp/stopping ]] || return 0
+  # A failed $(<file) substitution can exit older Bash despite the conditional.
+  # Guard read explicitly, accepting a final numeric line without a newline too.
+  if ! { IFS= read -r current <"$BRIGHTNESS_FILE" || [[ -n $current ]]; } 2>/dev/null; then
+    message='WARNING: brightness watcher could not read backlight.'
+  elif [[ ! $current =~ ^[0-9]{1,9}$ ]]; then
+    message='WARNING: brightness watcher read an invalid backlight value.'
+  elif ((10#$current == brightness_target_raw)); then
+    return 0
+  elif printf '%s\n' "$brightness_target_raw" 2>/dev/null >"$BRIGHTNESS_FILE"; then
+    message="Backlight changed externally ($current); reapplied selected value $brightness_target_raw."
+  else
+    message='WARNING: brightness watcher could not write backlight.'
+  fi
+  if ((now >= next_brightness_notice)); then
+    echo "$message"
+    next_brightness_notice=$((now + 30))
+  fi
+  return 0
 }
 # END BRIGHTNESS_FUNCTIONS
 child=''
@@ -226,6 +252,8 @@ while kill -0 "$child" 2>/dev/null; do
     echo 'Launcher heartbeat expired; stopping VHP.'
     exit 0
   fi
+  # Keyboard mode maintains its live volume-button target in the backend instead.
+  if [[ $mode == terminal ]]; then maintain_brightness "${uptime%%.*}"; fi
   sleep 1
 done
 wait "$child"

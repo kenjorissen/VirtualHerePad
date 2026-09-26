@@ -51,6 +51,9 @@ class Brightness:
     def __init__(self):
         self.path = Path("/sys/class/backlight/amdgpu_bl0/brightness")
         self.preference = Path("/home/.vhp/data/brightness-percent")
+        self.stopping = Path("/run/vhp/stopping")
+        self.next_check = 0.0
+        self.next_notice = 0.0
         try:
             fd = os.open(self.preference, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
             try:
@@ -77,11 +80,40 @@ class Brightness:
         self.dirty = False
 
     def change(self, delta):
-        if self.maximum <= 0 or Path("/run/vhp/stopping").exists():
+        if self.maximum <= 0 or self.stopping.exists():
             return
         self.percent = min(100, max(0, self.percent + delta))
         self.path.write_text(str(brightness_target(self.maximum, self.percent, self.product)))
         self.dirty = True
+
+    def maintain(self, now=None):
+        """Reapply the current selection on drift, at most once per second.
+
+        Volume events and this check run on the same backend thread. Only change()
+        changes the target percentage; external backlight writes never become it.
+        Return a rate-limited journal notice, not a failure that stops sharing.
+        """
+        now = time.monotonic() if now is None else now
+        if now < self.next_check:
+            return None
+        self.next_check = now + 1.0
+        if self.maximum <= 0 or self.stopping.exists():
+            return None
+        target = brightness_target(self.maximum, self.percent, self.product)
+        try:
+            current = self.path.read_text().strip()
+            if re.fullmatch(r"[0-9]{1,9}", current) is None:
+                raise ValueError("invalid backlight value")
+            if int(current) == target:
+                return None
+            self.path.write_text(str(target))
+            notice = f"Backlight changed externally ({current}); reapplied selected {self.percent}% ({target})."
+        except (OSError, ValueError) as exc:
+            notice = f"WARNING: brightness watcher: {exc}"
+        if now >= self.next_notice:
+            self.next_notice = now + 30.0
+            return notice
+        return None
 
     def save(self):
         if self.dirty:

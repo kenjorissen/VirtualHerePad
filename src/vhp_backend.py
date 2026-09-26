@@ -258,6 +258,10 @@ class Backend:
                         self.volume.process()
                     elif self.connection is not None:
                         self.read(self.reader)
+                if not self.stopping:
+                    notice = self.brightness.maintain()
+                    if notice:
+                        self.notice(notice)
                 if (
                     self.installed
                     and self.connection is None
