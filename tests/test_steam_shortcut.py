@@ -25,7 +25,7 @@ def fields(entry):
 def install_launcher(home):
     install_dir = home / ".local/share/VirtualHerePad"
     install_dir.mkdir(parents=True)
-    for name in ("vhp.sh", "vhp-gui.sh"):
+    for name in ("vhp.sh", "vhp-gui.sh", "vhp-launch.sh"):
         launcher = install_dir / name
         launcher.write_text("#!/bin/bash\nexit 0\n")
         launcher.chmod(0o755)
@@ -81,7 +81,7 @@ class ShortcutTests(unittest.TestCase):
         self.assertEqual(values[b"exe"], b'"/usr/bin/env"')
         self.assertEqual(
             values[b"LaunchOptions"],
-            b'-u LD_PRELOAD "/home/deck/my vhp/vhp-gui.sh"',
+            b'-u LD_PRELOAD "/home/deck/my vhp/vhp-launch.sh" --terminal',
         )
         self.assertEqual(values[b"AllowOverlay"], struct.pack("<I", 1))
 
@@ -146,7 +146,7 @@ class ShortcutTests(unittest.TestCase):
                 self.assertEqual(values[b"appname"], b"VirtualHerePad")
                 self.assertEqual(values[b"appid"], struct.pack("<I", 123))
                 self.assertEqual(values[b"StartDir"], b'"/home/deck/VirtualHerePad"')
-                self.assertIn(b"/home/deck/VirtualHerePad/vhp-gui.sh", values[b"LaunchOptions"])
+                self.assertIn(b"/home/deck/VirtualHerePad/vhp-launch.sh", values[b"LaunchOptions"])
                 self.assertEqual(values[b"icon"], b"/art.png")
                 self.assertEqual(shortcut.update(result, Path("/home/deck/VirtualHerePad")), result)
 
@@ -171,7 +171,7 @@ class ShortcutTests(unittest.TestCase):
                 shortcut.main()
             values = fields(entries((account / "config/shortcuts.vdf").read_bytes())[0])
             self.assertEqual(values[b"StartDir"], f'"{installed}"'.encode())
-            self.assertIn(f'"{installed}/vhp-gui.sh"'.encode(), values[b"LaunchOptions"])
+            self.assertIn(f'"{installed}/vhp-launch.sh"'.encode(), values[b"LaunchOptions"])
             self.assertNotIn(str(checkout).encode(), values[b"LaunchOptions"])
 
     def test_missing_installed_launcher_does_not_close_steam(self):
@@ -189,6 +189,19 @@ class ShortcutTests(unittest.TestCase):
                     shortcut.main()
                 close.assert_not_called()
                 save.assert_not_called()
+
+    def test_switching_modes_updates_one_shortcut_and_preserves_appid(self):
+        path = Path("/home/deck/my vhp")
+        terminal = shortcut.update(b"", path, "terminal")
+        keyboard = shortcut.update(terminal, path, "keyboard")
+        self.assertEqual(len(entries(keyboard)), 1)
+        before, after = fields(entries(terminal)[0]), fields(entries(keyboard)[0])
+        self.assertEqual(before[b"appid"], after[b"appid"])
+        self.assertEqual(after[b"appname"], b"VirtualHerePad")
+        self.assertTrue(after[b"LaunchOptions"].endswith(b" --keyboard"))
+        self.assertEqual(shortcut.update(keyboard, path, "terminal"), terminal)
+        with self.assertRaises(ValueError):
+            shortcut.update(keyboard, path, "--arbitrary-command")
 
     def test_rejects_duplicates(self):
         data = shortcut.encode(

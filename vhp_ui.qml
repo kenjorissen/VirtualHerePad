@@ -12,6 +12,12 @@ Window {
     title: "VirtualHerePad"
 
     property bool keyboardOpen: false
+    onKeyboardOpenChanged: {
+        if (!keyboardOpen) keypadTouch.clearTouches();
+    }
+    onActiveChanged: {
+        if (!active) keypadTouch.clearTouches();
+    }
     // Mirrors vhp.columns. Declared here so both the hit-testing maths and the
     // key widths use one name; an undefined divisor silently made every key zero
     // wide, which drew a correctly-counted, completely invisible keyboard.
@@ -20,6 +26,7 @@ Window {
     // Exact touch maths: map a point to the key that owns its grid cell. This
     // mirrors vhp_keyboard.layout_grid, where every row spans `columns` cells.
     function codeAt(x, y, w, h) {
+        if (w <= 0 || h <= 0 || x < 0 || y < 0 || x >= w || y >= h) return -1;
         var rows = vhp.rows;
         var rowHeight = h / rows.length;
         var row = Math.floor(y / rowHeight);
@@ -50,7 +57,12 @@ Window {
         border.width: 2
 
         Text {
-            anchors.centerIn: parent
+            anchors.fill: parent
+            anchors.margins: 5
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            fontSizeMode: Text.Fit
+            minimumPixelSize: 10
             text: button.text
             color: "#e8f1f8"
             font.bold: true
@@ -185,6 +197,62 @@ Window {
     }
 
     Column {
+        anchors.centerIn: parent
+        width: parent.width * 0.9
+        spacing: window.height * 0.035
+        visible: !window.keyboardOpen
+
+        Text {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: "VIRTUALHEREPAD"
+            color: "#61b8ef"
+            font.bold: true
+            font.pixelSize: window.height * 0.065
+        }
+        Row {
+            width: parent.width
+            Text {
+                width: parent.width / 2
+                horizontalAlignment: Text.AlignHCenter
+                text: vhp.dashboard.clock
+                color: "#da8de8"
+                font.pixelSize: window.height * 0.12
+            }
+            Text {
+                width: parent.width / 2
+                horizontalAlignment: Text.AlignHCenter
+                text: vhp.dashboard.battery
+                color: parseInt(vhp.dashboard.battery) <= 15 ? "#e06c6c" :
+                       (parseInt(vhp.dashboard.battery) <= 30 ? "#c9a227" : "#43d17a")
+                font.pixelSize: window.height * 0.12
+            }
+        }
+        Text {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: "Battery: " + vhp.dashboard.batteryState
+            color: "#8fb4d0"
+            font.pixelSize: window.height * 0.028
+        }
+        Text {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.Wrap
+            text: (vhp.stopping ? "SHUTTING DOWN" : (vhp.connected ? "SERVER RUNNING" : "CONNECTING TO SERVICE")) + "\nLocal IP: " + vhp.dashboard.local + "\nTCP clients: " + vhp.dashboard.clients
+            color: "#e8f1f8"
+            font.pixelSize: window.height * 0.033
+        }
+        Text {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: "Hold any corner for 2s to exit · Volume buttons adjust brightness\nTCP connections do not indicate controller ownership"
+            color: "#8fb4d0"
+            font.pixelSize: window.height * 0.023
+        }
+    }
+
+    Column {
         id: keypad
         objectName: "keypad"
         anchors.left: parent.left
@@ -224,7 +292,12 @@ Window {
 
                             Text {
                                 objectName: "keycapLabel"
-                                anchors.centerIn: parent
+                                anchors.fill: parent
+                                anchors.margins: 4
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                fontSizeMode: Text.Fit
+                                minimumPixelSize: 10
                                 text: modelData.label
                                 color: "#eaf2f8"
                                 font.pixelSize: Math.max(11, parent.height * 0.34)
@@ -238,6 +311,7 @@ Window {
 
     MultiPointTouchArea {
         id: keypadTouch
+        objectName: "keypadTouch"
         anchors.fill: keypad
         enabled: window.keyboardOpen
         minimumTouchPoints: 1
@@ -245,40 +319,39 @@ Window {
 
         property var mapping: ({})
 
-        function sync(points) {
-            var next = ({});
+        function clearTouches() {
+            mapping = ({});
+            vhp.clear();
+        }
+
+        function sync(points, released) {
+            var next = Object.assign({}, mapping);
             for (var i = 0; i < points.length; i++) {
                 var point = points[i];
-                if (!point.pressed) {
-                    continue;
-                }
+                delete next[point.pointId];
                 var code = window.codeAt(point.x, point.y, keypadTouch.width, keypadTouch.height);
-                if (code !== -1) {
-                    next[point.id] = code;
+                if (!released && point.pressed && code !== -1) {
+                    next[point.pointId] = code;
                 }
             }
-            for (var id in mapping) {
-                if (!(id in next) || next[id] !== mapping[id]) {
-                    vhp.release(mapping[id]);
-                }
+            // Reference counts by code: two fingers on one key must not release
+            // it until the last finger leaves. Signal lists contain changed points.
+            var before = ({}), after = ({});
+            for (var id in mapping) before[mapping[id]] = true;
+            for (var id2 in next) after[next[id2]] = true;
+            for (var oldCode in before) {
+                if (!(oldCode in after)) vhp.release(Number(oldCode));
             }
-            for (var id2 in next) {
-                if (mapping[id2] !== next[id2]) {
-                    vhp.press(next[id2]);
-                }
+            for (var newCode in after) {
+                if (!(newCode in before)) vhp.press(Number(newCode));
             }
             mapping = next;
         }
 
-        onPressed: sync(touchPoints)
-        onUpdated: sync(touchPoints)
-        onReleased: sync(touchPoints)
-        onCanceled: {
-            for (var id in mapping) {
-                vhp.release(mapping[id]);
-            }
-            mapping = ({});
-        }
+        onPressed: function(points) { sync(points, false); }
+        onUpdated: function(points) { sync(points, false); }
+        onReleased: function(points) { sync(points, true); }
+        onCanceled: clearTouches()
         Component.onDestruction: {
             for (var id in mapping) {
                 vhp.release(mapping[id]);

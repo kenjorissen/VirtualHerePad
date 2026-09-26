@@ -3,8 +3,10 @@
 import fcntl
 import os
 import re
+import stat
 import struct
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -49,8 +51,13 @@ class Brightness:
         self.path = Path("/sys/class/backlight/amdgpu_bl0/brightness")
         self.preference = Path("/home/.vhp/data/brightness-percent")
         try:
-            with self.preference.open("rb") as stream:
-                data = stream.read(6)
+            fd = os.open(self.preference, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+            try:
+                if not stat.S_ISREG(os.fstat(fd).st_mode):
+                    raise OSError("Brightness preference is not a regular file")
+                data = os.read(fd, 6)
+            finally:
+                os.close(fd)
             self.percent = (
                 int(data)
                 if re.fullmatch(rb"[0-9]{1,3}(?:\r?\n)?", data) and int(data) <= 100
@@ -58,7 +65,10 @@ class Brightness:
             )
         except OSError:
             self.percent = 1
-        self.maximum = int(self.path.with_name("max_brightness").read_text())
+        try:
+            self.maximum = int(self.path.with_name("max_brightness").read_text())
+        except (OSError, ValueError):
+            self.maximum = 0
         try:
             self.product = Path("/sys/class/dmi/id/product_name").read_text().strip()
         except OSError:
@@ -66,7 +76,7 @@ class Brightness:
         self.dirty = False
 
     def change(self, delta):
-        if Path("/run/vhp/stopping").exists():
+        if self.maximum <= 0 or Path("/run/vhp/stopping").exists():
             return
         self.percent = min(100, max(0, self.percent + delta))
         self.path.write_text(str(brightness_target(self.maximum, self.percent, self.product)))
@@ -74,12 +84,14 @@ class Brightness:
 
     def save(self):
         if self.dirty:
-            temporary = self.preference.with_name(".brightness-gui.tmp")
-            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-            with os.fdopen(fd, "w") as stream:
-                stream.write(f"{self.percent}\n")
-            os.replace(temporary, self.preference)
-            self.dirty = False
+            fd, temporary = tempfile.mkstemp(prefix=".brightness-", dir=self.preference.parent)
+            try:
+                with os.fdopen(fd, "w") as stream:
+                    stream.write(f"{self.percent}\n")
+                os.replace(temporary, self.preference)
+                self.dirty = False
+            finally:
+                Path(temporary).unlink(missing_ok=True)
 
 
 class VolumeBridge:
@@ -133,12 +145,15 @@ class VolumeBridge:
                     raise RuntimeError("Replacement keyboard did not appear")
                 time.sleep(0.02)
             fcntl.ioctl(self.source, 0x40044590, 1)  # EVIOCGRAB
+            if bits(ioctl_bytes(self.source, 0x18, 96)):
+                raise RuntimeError("A local key was pressed during setup; release keys and restart")
         except Exception:
             self.close()
             raise
 
     def emit(self, kind, code, value):
-        os.write(self.virtual, EVENT.pack(0, 0, kind, code, value))
+        if os.write(self.virtual, EVENT.pack(0, 0, kind, code, value)) != EVENT.size:
+            raise OSError("Short uinput write")
 
     def release(self):
         for code in self.held:
@@ -147,7 +162,10 @@ class VolumeBridge:
         self.emit(EV_SYN, 0, 0)
 
     def process(self):
-        data = os.read(self.source, EVENT.size * 64)
+        try:
+            data = os.read(self.source, EVENT.size * 64)
+        except BlockingIOError:
+            return
         if not data:
             raise OSError("AT keyboard disconnected")
         for _, _, kind, code, value in EVENT.iter_unpack(data):
@@ -269,11 +287,14 @@ class Gadget:
         return False
 
     def close(self):
-        if self.fd is not None:
+        # Unbind before closing the report endpoint: a final report must never
+        # be sent to a local driver that reclaimed the interface after unsharing.
+        if self.owned:
             try:
-                os.write(self.fd, bytes(8))
+                (GADGET / "UDC").write_text("\n")
             except OSError:
                 pass
+        if self.fd is not None:
             os.close(self.fd)
             self.fd = None
         if self.owned:
@@ -297,3 +318,12 @@ def cleanup_gadget():
         if path.exists():
             path.rmdir()
     GADGET.rmdir()
+
+
+if __name__ == "__main__":
+    # Recovery after a service crash/kill. Never remove an unrelated gadget.
+    if GADGET.exists():
+        identity = GADGET / "strings/0x409/serialnumber"
+        if not identity.exists() or identity.read_text().strip() != SERIAL:
+            raise SystemExit("Refusing cleanup: VHP gadget identity does not match")
+        cleanup_gadget()

@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -213,15 +214,16 @@ class BrightnessTests(unittest.TestCase):
             "# END BRIGHTNESS_FUNCTIONS", 1
         )[0]
         script = functions + '\nbrightness_target "$1" "$2"'
-        with Path("/tmp/vhp-product-name").open("w") as stream:
-            stream.write(product + "\n")
-        result = subprocess.run(
-            ["bash", "-euc", script, "bash", str(maximum), str(percent)],
-            env={"PATH": "/usr/bin:/bin", "DMI_PRODUCT_FILE": "/tmp/vhp-product-name"},
-            capture_output=True,
-            text=True,
-            timeout=20,
-        )
+        with tempfile.TemporaryDirectory() as directory:
+            product_path = Path(directory) / "product"
+            product_path.write_text(product + "\n")
+            result = subprocess.run(
+                ["bash", "-euc", script, "bash", str(maximum), str(percent)],
+                env={"PATH": "/usr/bin:/bin", "DMI_PRODUCT_FILE": str(product_path)},
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
         self.assertEqual(result.returncode, 0, result.stderr)
         return int(result.stdout)
 

@@ -282,10 +282,10 @@ cleanup() {
   fi
   echo 'VHP stopped.'
 }
+# Do not claim/stop somebody else's service if start is refused.
+sudo -n "$HELPER" start
 trap cleanup EXIT
 trap 'exit 0' INT TERM
-
-sudo -n "$HELPER" start
 if [[ -t 1 && ${TERM:-dumb} != dumb ]]; then
   ui_active=true
   printf '\033[?1049h\033[?25l'

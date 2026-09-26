@@ -11,7 +11,7 @@ warn() {
 
 section 'Platform and tools'
 uname -sm
-for cmd in sudo systemctl systemd-inhibit curl konsole python3; do
+for cmd in sudo systemctl systemd-inhibit curl konsole python3 flock; do
   if command -v "$cmd" >/dev/null; then
     echo "OK: $cmd"
   else
@@ -20,7 +20,7 @@ for cmd in sudo systemctl systemd-inhibit curl konsole python3; do
 done
 
 section 'Installed files and ownership'
-for path in /home/.vhp /home/.vhp/bin /home/.vhp/bin/vhp-root /home/.vhp/bin/vhusbdx86_64 /home/.vhp/bin/touch-stop.py /etc/systemd/system/vhp.service /home/.vhp/data; do
+for path in /home/.vhp /home/.vhp/bin /home/.vhp/bin/vhp-root /home/.vhp/bin/vhusbdx86_64 /home/.vhp/bin/touch-stop.py /etc/systemd/system/vhp.service /home/.vhp/data /home/.vhp/bin/vhp_backend.py /home/.vhp/bin/vhp_hardware.py /home/.vhp/bin/vhp_keyboard.py /home/.vhp/bin/vhp_ipc.py /home/.vhp/bin/owner-uid; do
   if [[ -e $path ]]; then
     stat -c '%U:%G %a %n' "$path"
     [[ ! -L $path ]] || warn "Unexpected symlink: $path"
@@ -42,7 +42,7 @@ done
 
 section 'Installed user tools (independent of the checkout)'
 user_root="${HOME:?HOME must be set}/.local/share/VirtualHerePad"
-for name in vhp.sh doctor.sh uninstall.sh steam-shortcut.py; do
+for name in vhp.sh vhp-launch.sh vhp_session.py vhp_qt.py vhp_ui.py vhp_ui.qml doctor.sh uninstall.sh steam-shortcut.py; do
   if [[ -r "$user_root/$name" ]]; then
     echo "OK: $user_root/$name"
   else
@@ -50,6 +50,21 @@ for name in vhp.sh doctor.sh uninstall.sh steam-shortcut.py; do
   fi
 done
 [[ -x "$user_root/vhp.sh" ]] || warn 'Installed user launcher is not executable'
+
+section 'Keyboard interface'
+if [[ -r $user_root/launch-mode ]]; then
+  printf 'Default interface: '
+  head -n 1 "$user_root/launch-mode"
+fi
+if [[ -d $user_root/pylib ]]; then
+  python3 -I "$user_root/vhp_qt.py" --check-runtime || warn 'Private Qt runtime cannot load'
+else
+  echo 'Qt runtime not installed (normal for terminal-only installations).'
+fi
+for path in /run/vhp/gui.sock /sys/kernel/config/usb_gadget/vhp_keyboard /dev/uinput; do
+  if [[ -e $path ]]; then stat -c '%U:%G %a %n' "$path"; fi
+done
+echo 'Keyboard/gadget capability is tested at launch; diagnostics never load modules or grab input.'
 
 section 'Installed version (not the current checkout)'
 if [[ -r /home/.vhp/bin/build-info.txt ]]; then
@@ -70,7 +85,7 @@ else
 fi
 
 section 'Listed sudo permissions (does not start or stop VHP)'
-for action in start stop keepalive; do
+for action in start start-keyboard stop keepalive; do
   if sudo -n -l /home/.vhp/bin/vhp-root "$action"; then
     echo "Listed permission: $action (listing alone does not prove passwordless access)"
   else

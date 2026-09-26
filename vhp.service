@@ -7,10 +7,11 @@ RequiresMountsFor=/home/.vhp
 Type=simple
 WorkingDirectory=/home/.vhp/data
 RuntimeDirectory=vhp
-RuntimeDirectoryMode=0700
-# sleep: keep the Deck awake while sharing. idle: stop the screen blanking out
-# from under the dashboard and the touch keyboard. Both are released on exit.
+# Traverse only: the GUI socket is owner-only; the lease/markers remain root-only.
+RuntimeDirectoryMode=0711
+# Advisory inhibitors: compositor-specific blanking policies may differ.
 ExecStart=/usr/bin/systemd-inhibit --what=sleep:idle --mode=block --who=VHP "--why=Sharing Steam Deck controller" /home/.vhp/bin/vhp-root run
+ExecStopPost=/home/.vhp/bin/vhp-root cleanup
 KillMode=control-group
 KillSignal=SIGTERM
 TimeoutStopSec=15

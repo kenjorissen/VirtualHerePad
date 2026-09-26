@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installed root-owned by setup.sh; sudo permits only start/stop/keepalive/check.
+# Installed root-owned by setup.sh; sudo permits only the fixed launcher actions.
 set -euo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -26,8 +26,29 @@ case "$1" in
     heartbeat
     exit 0
     ;;
-  start | stop)
+  start | start-keyboard)
+    install -d -o root -g root -m 700 /run/vhp-launch
+    exec 9>/run/vhp-launch/lock
+    flock -n 9 || {
+      echo 'Another VHP operation is in progress.' >&2
+      exit 1
+    }
+    if /usr/bin/systemctl is-active --quiet vhp.service; then
+      echo 'VHP is already running. Close its launcher before switching modes.' >&2
+      exit 1
+    fi
+    mode=terminal
+    [[ $1 != start-keyboard ]] || mode=keyboard
+    printf '%s\n' "$mode" >/run/vhp-launch/mode
+    /usr/bin/systemctl start vhp.service
+    exit $?
+    ;;
+  stop)
     exec /usr/bin/systemctl "$1" vhp.service
+    ;;
+  cleanup)
+    # Also runs after a forced service kill. Only VHP's fixed gadget is eligible.
+    exec /usr/bin/python3 -I /home/.vhp/bin/vhp_hardware.py
     ;;
   run) ;;
   *) exit 1 ;;
@@ -126,24 +147,21 @@ apply_brightness() {
 # END BRIGHTNESS_FUNCTIONS
 child=''
 touch_monitor=''
+keyboard_backend=''
+mode=terminal
+if [[ -f /run/vhp-launch/mode ]]; then read -r mode </run/vhp-launch/mode; fi
+[[ $mode == terminal || $mode == keyboard ]] || exit 1
 cleanup() {
   trap - EXIT INT TERM
   # Notify the UI before relighting the screen; cleanup may take a few seconds.
   if ! : >/run/vhp/stopping; then
     echo 'WARNING: could not signal shutdown to the dashboard.' >&2
   fi
-  # Restore first, even if the USB server takes time to terminate.
-  if [[ -n "$brightness" ]]; then
-    if printf '%s\n' "$brightness" >"$BRIGHTNESS_FILE"; then
-      echo "Restored backlight brightness=$brightness"
-    else
-      echo "WARNING: could not restore backlight brightness=$brightness" >&2
-    fi
-  fi
   local pid alive
   local -a children=()
   [[ -z "$child" ]] || children+=("$child")
   [[ -z "$touch_monitor" ]] || children+=("$touch_monitor")
+  [[ -z "$keyboard_backend" ]] || children+=("$keyboard_backend")
   for pid in "${children[@]}"; do kill -TERM "$pid" 2>/dev/null || true; done
   for _ in 1 2 3; do
     alive=false
@@ -157,6 +175,14 @@ cleanup() {
     kill -KILL "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
   done
+  # The brightness event reader is now gone, so it cannot race restoration.
+  if [[ -n "$brightness" ]]; then
+    if printf '%s\n' "$brightness" >"$BRIGHTNESS_FILE"; then
+      echo "Restored backlight brightness=$brightness"
+    else
+      echo "WARNING: could not restore backlight brightness=$brightness" >&2
+    fi
+  fi
 }
 trap cleanup EXIT
 trap 'exit 0' INT TERM
@@ -172,7 +198,16 @@ rm -f /run/vhp/touch-stop
 touch_monitor=$!
 /home/.vhp/bin/vhusbdx86_64 -c /home/.vhp/data/config.ini &
 child=$!
+if [[ $mode == keyboard ]]; then
+  /usr/bin/python3 -I /home/.vhp/bin/vhp_backend.py --installed &
+  keyboard_backend=$!
+fi
 while kill -0 "$child" 2>/dev/null; do
+  if [[ -n "$keyboard_backend" ]] && ! kill -0 "$keyboard_backend" 2>/dev/null; then
+    echo 'Keyboard backend exited; stopping the session.'
+    wait "$keyboard_backend"
+    exit $?
+  fi
   if [[ -f /run/vhp/touch-stop ]]; then
     echo 'Touchscreen requested shutdown.'
     exit 0

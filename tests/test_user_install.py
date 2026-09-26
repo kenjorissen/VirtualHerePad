@@ -9,7 +9,22 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-TOOLS = ("vhp.sh", "vhp-gui.sh", "doctor.sh", "uninstall.sh", "steam-shortcut.py")
+TOOLS = (
+    "vhp.sh",
+    "vhp-gui.sh",
+    "vhp-launch.sh",
+    "doctor.sh",
+    "uninstall.sh",
+    "steam-shortcut.py",
+    "vhp_session.py",
+    "vhp_qt.py",
+    "vhp_ui.py",
+    "vhp_ui.qml",
+    "vhp_keyboard.py",
+    "vhp_ipc.py",
+    "vhp_dashboard.py",
+    "vhp-gui-deps.py",
+)
 
 
 class UserInstallTests(unittest.TestCase):
@@ -95,6 +110,44 @@ class UserInstallTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(calls.read_text().splitlines(), ["start", "stop"])
+
+    def test_installed_keyboard_supervisor_works_without_checkout(self):
+        self.install()
+        shutil.rmtree(self.checkout)
+        mocks = self.root / "keyboard mocks"
+        mocks.mkdir()
+        calls = self.root / "calls"
+        helper = mocks / "helper"
+        helper.write_text('#!/bin/bash\nprintf "%s\\n" "$1" >>"$CALLS"\n')
+        helper.chmod(0o755)
+        sudo = mocks / "sudo"
+        sudo.write_text('#!/bin/bash\n[[ $1 == -n ]] || exit 99\nshift\nexec "$@"\n')
+        sudo.chmod(0o755)
+        session = self.installed / "vhp_session.py"
+        session.write_text(session.read_text().replace("/home/.vhp/bin/vhp-root", str(helper)))
+        # This fixture substitutes only the GUI process; launcher/supervisor are real.
+        (self.installed / "vhp_qt.py").write_text(
+            'import sys\nassert sys.argv[1:] in (["--check-runtime"], ["--session"])\n'
+        )
+        result = subprocess.run(
+            [str(self.installed / "vhp-launch.sh"), "--keyboard"],
+            cwd=self.root,
+            env=dict(
+                self.env,
+                PATH=str(mocks) + ":" + os.environ["PATH"],
+                WAYLAND_DISPLAY="mock",
+                CALLS=str(calls),
+            ),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        actions = calls.read_text().splitlines()
+        self.assertEqual(actions[0], "start-keyboard")
+        self.assertEqual(actions[-1], "stop")
+        self.assertTrue(set(actions) <= {"start-keyboard", "keepalive", "stop"})
 
     def test_installed_uninstaller_works_without_checkout_and_removes_itself(self):
         mocks = self.root / "mocks"

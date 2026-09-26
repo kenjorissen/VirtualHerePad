@@ -2,8 +2,10 @@
 
 Use your Steam Deck as a controller for another computer. VirtualHerePad (VHP)
 launches from Steam, lowers the screen brightness, shows a battery/status
-dashboard, and prevents normal sleep while sharing. Hold a screen corner to stop
-and restore the original brightness.
+dashboard, and inhibits normal sleep while sharing. Choose the **touch keyboard +
+dashboard** or the lightweight **terminal dashboard**. Both use one Steam shortcut
+and the same VirtualHere service, license, brightness preference, and cleanup.
+Hold a screen corner to stop and restore the original brightness.
 
 ## What is VirtualHere?
 
@@ -24,8 +26,12 @@ pricing, and support.
 
 ## Quick start: Steam Deck
 
-All prerequisites are included on a stock Steam Deck. **No extra pacman or pip
-packages, graphical toolkits, or virtual environment are needed.**
+No system packages, pip, virtual environment, or SteamOS read-only changes are
+needed. **Keyboard mode** downloads a private, matched Qt/PySide6 **6.11.2** runtime
+(about 76 MiB compressed); **terminal mode** skips Qt. Keyboard mode needs Python
+3.10+, compatible glibc, and the stock `dummy_hcd`, `libcomposite`, `usb_f_hid`, and
+uinput kernel support. Setup checks Qt compatibility; gadget support is checked
+at launch. The installed keyboard packaging still needs Deck acceptance testing.
 
 1. **Prepare the Deck.** Log into Steam once, switch to **Desktop Mode**, and open
    **Konsole**. Run as your normal user, not root. If you haven't set a sudo
@@ -34,12 +40,13 @@ packages, graphical toolkits, or virtual environment are needed.**
 
    ```bash
    cd ~
-   git clone https://github.com/kenjorissen/VirtualHerePad.git
+   git clone --branch touch-keyboard https://github.com/kenjorissen/VirtualHerePad.git
    cd VirtualHerePad
    ./setup.sh
    ```
 
-3. **Add the shortcut.** Accept setup's offer to add **VirtualHerePad** to Steam.
+3. **Choose the interface and add the shortcut.** Select `keyboard` (recommended)
+   or `terminal` when setup asks, then accept its offer to add **VirtualHerePad** to Steam.
    Save games and finish downloads before allowing it to close Steam. Reopen
    Steam when prompted, or open it yourself. If you already have a VirtualHere
    config/license, [import it](#virtualhere-config-and-license) before launching.
@@ -54,15 +61,37 @@ packages, graphical toolkits, or virtual environment are needed.**
 6. **Connect the gaming PC.** Follow the [Windows client steps](#windows-client-quick-start)
    below and leave the Deck's launcher running.
 7. **Stop when finished.** Hold **one finger in any screen corner for two
-   seconds**. VHP stops sharing and restores brightness.
+   seconds**, or hold **HOLD 2s TO QUIT** in the keyboard interface.
+   VHP stops sharing and restores brightness.
 
-Steam runs the installed `vhp-gui.sh` wrapper and `vhp.sh` under
+Steam runs the installed `vhp-launch.sh --keyboard` or `vhp-launch.sh --terminal` under
 `~/.local/share/VirtualHerePad`.
 You do **not** need to run it separately during setup. Once the shortcut has
 been updated, the checkout can be moved or deleted without breaking normal use.
 
 Setup automatically downloads and verifies VirtualHere. To supply the file
 instead, see [Manual server download](#manual-server-download).
+
+### Selecting or switching interfaces
+
+```bash
+./setup.sh --keyboard   # keyboard + dashboard, with private Qt
+./setup.sh --terminal   # terminal dashboard; no Qt download
+```
+
+Setup remembers the choice; noninteractive setup uses that choice, or keyboard
+for a fresh installation. Accept shortcut updating to apply it to Steam. Only
+one **VirtualHerePad** entry is updated, preserving its app ID and artwork.
+Both interfaces are installed; terminal mode remains available as a fallback.
+To switch an already-equipped installation without a checkout:
+
+```bash
+python3 ~/.local/share/VirtualHerePad/steam-shortcut.py --keyboard
+# Or: --terminal
+```
+
+The shortcut uses a fixed argument, not a menu at each launch. Only one session
+can run at a time. The installed launcher never downloads or installs anything.
 
 ### Manual server download
 
@@ -89,6 +118,11 @@ Setup installs the file at `/home/.vhp/bin/vhusbdx86_64` as **root:root, mode
 path, use `VHP_SERVER_PATH="/path/to/vhusbdx86_64" ./setup.sh --manual-download`.
 An independently trusted `VHP_SHA256` can also be supplied for an automatic check.
 
+Manual mode makes **no Qt downloads either**. Use `--terminal`, or prepare Qt
+separately with `python3 vhp-gui-deps.py` before offline keyboard setup.
+`VHP_QT_PATH=/path/to/pylib` can supply an existing matching runtime; setup validates
+it before changing the installed service.
+
 ## Windows client quick start
 
 1. Open the official [VirtualHere USB Client download page](https://www.virtualhere.com/usb_client_software).
@@ -100,7 +134,10 @@ An independently trusted `VHP_SHA256` can also be supplied for an automatic chec
 3. In the client's device tree, right-click **Steam Controller** (the label may
    include **Valve Software**) and select **Use**. Keep the touchscreen local—you
    need it for the corner-hold exit gesture.
-4. Configure the controller through Steam/Steam Input on the PC as needed, then
+4. In keyboard mode, also select **Use** on **VHP Touch Keyboard**. Sharing the
+   controller and keyboard simultaneously requires a VirtualHere license/trial
+   allowance for **two devices**. VHP does not bypass licensing.
+5. Configure the controller through Steam/Steam Input on the PC as needed, then
    play. Stopping use in the client disconnects the controller; use the Deck's
    corner-hold gesture to stop VHP itself.
 
@@ -108,7 +145,35 @@ If the server doesn't appear, see [Connection troubleshooting](#connection-troub
 
 ## Daily use
 
-### Dashboard and controls
+### Touch keyboard and dashboard
+
+The graphical interface opens on a clock/battery/network dashboard. Tap the
+**top-center KEYBOARD** button to show/hide the keyboard. Layout selection and
+**HOLD 2s TO QUIT** remain available in both states. The quit button fills while
+held; releasing early, sliding off, or losing focus cancels the hold.
+
+- Use the Deck's **Volume Up/Down** buttons to adjust brightness by one step;
+  repeat works while held. Other keys on the local AT keyboard are forwarded
+  through a replacement input device. If safe discovery/grabbing fails, VHP logs
+  a warning and leaves the physical keyboard alone.
+- Choose **US, UK, German, or French** to match the active layout on the PC.
+  These are USB key positions, not Unicode injection. IME composition remains on
+  the PC; VHP cannot discover or change the PC's selected layout.
+- Shift/AltGr can be tapped for the next key; Ctrl/Alt/Super latch until tapped
+  again. **RELEASE KEYS**, hiding the keyboard, or losing focus clears local
+  key/modifier state. Caps Lock indication tracks VHP taps, not the PC's LED state.
+- Remote typing requires VirtualHere's `usbfs` ownership of the gadget interface.
+  Ownership is rechecked at each report write; the check and kernel ownership
+  change are not atomic. Do not treat this as a security boundary against a
+  deliberately racing local driver.
+
+The root backend is a supervised child of `vhp.service`, not a separately run
+terminal command. Closing/crashing the UI ends the backend; backend failure,
+corner exit, and heartbeat expiry stop the whole service. `vhp-gui-sandbox.sh`
+is only a compatibility alias for the installed launcher, not an installer or
+root-checkout runner.
+
+### Terminal dashboard and shared controls
 
 The colored terminal dashboard shows a block-letter **VirtualHerePad** title,
 large battery percentage (green, amber at 30%, red at 15%), charging status,
@@ -137,7 +202,7 @@ Sampling reuses the heartbeat loop, without persistent extra monitoring processe
 Missing battery/network tools or data show as unavailable; no TCP peers shows
 **Waiting for client**. Battery impact has not been measured.
 
-The Steam shortcut uses `vhp-gui.sh` to start a separate fullscreen Konsole with
+In terminal mode, `vhp-launch.sh --terminal` uses `vhp-gui.sh` to start a separate fullscreen Konsole with
 its menu, tabs, scrollbar, and both toolbars hidden. VHP's own configuration and
 GUI XML overrides live under `~/.local/share/VirtualHerePad/konsole/`, alongside
 isolated state and cache directories. No unsupported toolbar flags are needed.
@@ -151,10 +216,10 @@ heartbeat check, normally within about a second; Ctrl+C shows it immediately.
 The message remains visible until the stop command finishes, then terminal state
 is restored. The brief shutdown wait remains necessary for orderly USB cleanup.
 
-While VHP is running, the service holds a systemd inhibitor for both **sleep** and
-**idle**, so the Deck neither suspends nor blanks its screen mid-session. Both are
-released when VHP exits. Note that this keeps a mostly static image on screen for
-the whole session, which is worth considering on an OLED panel.
+While VHP is running, the service requests systemd inhibition of **sleep** and
+**idle**. Both are released on exit. These are advisory: compositor/Steam display
+blanking policies and forced suspension may behave differently. A mostly static
+image can remain on screen for the whole session; consider OLED burn-in risk.
 
 For corner-hold exit, keep one finger within the outer **12% of both screen axes**
 for two seconds. Releasing, moving out, or adding another finger cancels it.
@@ -215,8 +280,9 @@ measured upper plateau, slightly below the hardware maximum. On the generic
 curve, `0` writes hardware zero (the screen may go dark) and `100` writes the
 hardware maximum. Small values can also round to zero on coarse hardware ranges.
 
-Brightness is set **once at startup**, and the selected mapping is logged.
-VHP does not continually fight Steam's adaptive brightness control.
+Brightness is set **at startup and on keyboard-mode volume-button events**, not
+continuously. The selected mapping is logged. Button changes are saved on release
+and clean shutdown. VHP does not fight Steam's adaptive brightness control.
 
 Missing or invalid preferences log a warning and fall back to 1%. Parsing is
 bounded to six bytes, rejects excess/binary data and non-regular files, and never
@@ -269,9 +335,8 @@ Setup stops the current instance and replaces installed code and user tools.
 not start VHP or enable it at boot. If you deleted the checkout, clone it again
 and run setup.
 
-When upgrading from a version whose shortcut points into the checkout, accept
-shortcut creation to redirect that entry to the installed launcher. Its app ID
-and other settings are retained.
+Accept shortcut updating to point the existing entry at the selected installed
+launcher mode. Its app ID and other settings are retained.
 
 Normal SteamOS updates should preserve `/home`. If an update resets the service
 or sudo rule in `/etc`, rerun setup to restore integration.
@@ -284,7 +349,7 @@ Run as your normal user, not with `sudo`, from any directory:
 ~/.local/share/VirtualHerePad/uninstall.sh
 ```
 
-This stops the service and removes installed programs and the sudo rule.
+This stops the service and removes installed programs, private Qt runtime, and the sudo rule.
 **Settings stay in `/home/.vhp/data`**, including `config.ini` and
 `brightness-percent`; nothing is moved to your user home. Remove the non-Steam
 shortcut manually in Steam. The checkout and other old local files are untouched.
@@ -316,7 +381,8 @@ hashes. An inactive service is normal when VHP isn't running.
 To test the installed launcher directly, run this in the Deck's Konsole:
 
 ```bash
-~/.local/share/VirtualHerePad/vhp.sh
+~/.local/share/VirtualHerePad/vhp-launch.sh --keyboard
+# Or: --terminal
 ```
 
 It starts the same service and adjusts brightness. Review diagnostic logs before
@@ -359,7 +425,7 @@ Manual fields for the normal `deck` account:
 | Name | `VirtualHerePad` |
 | Target | `"/usr/bin/env"` |
 | Start In | `"/home/deck/.local/share/VirtualHerePad"` |
-| Launch Options | `-u LD_PRELOAD "/home/deck/.local/share/VirtualHerePad/vhp-gui.sh"` |
+| Launch Options | `-u LD_PRELOAD "/home/deck/.local/share/VirtualHerePad/vhp-launch.sh" --keyboard` (or `--terminal`) |
 | Steam Overlay | On |
 | Force Steam Play compatibility tool | Off (native Linux launcher) |
 
@@ -372,16 +438,30 @@ name. User tools install under `.local/share/VirtualHerePad` in that home, not
 | Location | Purpose |
 | --- | --- |
 | `~/.local/share/VirtualHerePad` | User-owned launcher, diagnostics, shortcut helper, and uninstaller |
-| `/home/.vhp/bin` | Root-owned service helper, touch monitor, and VirtualHere binary |
+| `/home/.vhp/bin` | Root-owned helper, touch monitor, keyboard backend/modules, installer-selected UID, and VirtualHere binary |
 | `/home/.vhp/data` | Private config and brightness preference; directory mode `0700` |
 | `/etc/systemd/system/vhp.service` | Manually started service; not enabled at boot |
-| `/etc/sudoers.d/zz-vhp` | Fixed passwordless start/stop/keepalive/check operations |
-| `/run/vhp` | Root-only temporary heartbeat and touch-exit state |
+| `/etc/sudoers.d/zz-vhp` | Fixed passwordless start/start-keyboard/stop/keepalive/check operations |
+| `/run/vhp` | Root-owned mode `0711`: traversable, not listable; root-private lease/markers and owner-only GUI socket |
+| `/run/vhp-launch` | Root-only mode selection/serialization for the service |
 
 Setup/uninstall do not write to `/usr` or disable SteamOS's read-only protection.
 The `/etc` entries use SteamOS's normally writable overlay. The service does not
 execute code or read settings from the user-writable checkout or user-tools
 folder. Review changes before password-authorizing setup.
+
+The GUI and private Qt runtime run only as the desktop user. The backend uses
+isolated system Python (`-I`) and root-owned modules. Its mode-`0600` Unix socket
+also checks the peer UID against installer-owned metadata. IPC permits only
+bounded keyboard/status operations, not commands or paths. Only the configured
+installing user is supported; installing as a different user replaces that owner.
+The root backend never uses private Qt or imports Python from the user's home.
+
+Qt wheels are pinned to one matched package version, verified against PyPI's
+published SHA-256, checked for Python/glibc compatibility and unsafe archive paths,
+then validated in a staged directory before replacement. This trusts PyPI's HTTPS
+metadata; the checksum is not an independent signature. Wheel licenses remain
+in the private runtime; they are separate from this repository's MIT license.
 
 The touch monitor uses Python's standard library to read direct type-B
 multitouch devices non-exclusively, without logging coordinates. It blocks on
@@ -439,7 +519,9 @@ Tests use temporary files and mock services, not USB devices or root access.
 They do not install/start the real VHP service. Shortcut tests reject unmocked
 input and process launches; stdout/stderr is shown only on failure. For hardware
 changes, verify launch, client connection, corner-hold exit, brightness/terminal
-restoration, and forced-launcher cleanup on the Deck.
+restoration, and forced-launcher cleanup on the Deck. Qt tests need a private
+PySide6 runtime and `QT_QPA_PLATFORM=offscreen`; without it they are explicitly
+skipped. Run both Qt-enabled and standard-library suites before shipping.
 
 ## Credits and license
 

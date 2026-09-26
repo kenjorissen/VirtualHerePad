@@ -1,150 +1,195 @@
 #!/usr/bin/env python3
-"""Download the private Qt runtime used by the optional on-screen keyboard UI.
+"""Fetch a matched, pinned private Qt runtime; no pip or system installation.
 
-Stock SteamOS has no pip requirement and no writable system Python, so the
-PySide6 wheels are unpacked into a private directory that `vhp_ui.py` reaches
-through PYTHONPATH. Nothing is installed system-wide and nothing is executed
-during download.
-
-Integrity note: each wheel's SHA-256 is checked against the digest published by
-the same PyPI JSON API that supplied the URL. That detects truncated or corrupted
-transfers, but it is not independent provenance.
+Wheel digests come from PyPI over HTTPS (transport integrity, not independent
+provenance). All downloads/extraction are staged before replacing the runtime.
 """
 
 import argparse
 import hashlib
 import json
+import os
+import platform
+import re
 import stat
+import subprocess
 import sys
-import urllib.error
+import tempfile
 import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
 
+VERSION = "6.11.2"
 PACKAGES = ("shiboken6", "PySide6-Essentials")
-API = "https://pypi.org/pypi/{package}/json"
-TRUSTED_HOST = "files.pythonhosted.org"
-MINIMUM_PYTHON = (3, 10)
+API = "https://pypi.org/pypi/{package}/" + VERSION + "/json"
+MAX_WHEEL = 200 * 1024 * 1024
+MAX_UNPACKED = 600 * 1024 * 1024
+
+
+class HTTPSOnly(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, msg, headers, newurl):
+        if urllib.parse.urlsplit(newurl).scheme != "https":
+            raise ValueError("Refusing non-HTTPS redirect")
+        return super().redirect_request(request, fp, code, msg, headers, newurl)
+
+
+OPENER = urllib.request.build_opener(HTTPSOnly())
 
 
 def compatible(python_tags, python_version):
-    """True if any of a wheel's compressed python tags fits this interpreter."""
     for tag in python_tags.split("."):
-        if tag in ("py3", "py2"):
+        if tag == "py3":
             return True
-        if not tag.startswith("cp"):
-            continue
-        digits = tag[2:]
-        if not digits.isdigit():
-            return True  # e.g. cp3x; treat as permissive rather than skipping.
-        required = (int(digits[0]), int(digits[1:]))
-        if required <= python_version:
+        if re.fullmatch(r"cp3[0-9]+", tag):
+            if (3, int(tag[3:])) <= python_version:
+                return True
+    return False
+
+
+def platform_compatible(tags, glibc):
+    for tag in tags.split("."):
+        match = re.fullmatch(r"manylinux_(\d+)_(\d+)_x86_64", tag)
+        if match and tuple(map(int, match.groups())) <= glibc:
             return True
     return False
 
 
-def select_wheel(package, python_version):
-    """Pick the newest manylinux x86-64 wheel compatible with this interpreter.
-
-    Wheel filenames end in ``-{python}-{abi}-{platform}.whl``; the python tag is
-    the third field from the end, never the first.
-    """
-    with urllib.request.urlopen(API.format(package=package), timeout=60) as response:
-        data = json.load(response)
-    version = data["info"]["version"]
+def select_wheel(package, python_version, glibc):
+    with OPENER.open(API.format(package=package), timeout=60) as response:
+        data = response.read(1024 * 1024 + 1)
+    if len(data) > 1024 * 1024:
+        raise ValueError("Oversized PyPI metadata")
+    data = json.loads(data)
+    if data["info"]["version"] != VERSION:
+        raise ValueError("Unexpected Qt package version")
     candidates = []
-    for entry in data["releases"].get(version, []):
+    for entry in data["urls"]:
         name = entry["filename"]
-        if not name.endswith(".whl"):
+        fields = name.removesuffix(".whl").split("-")
+        if not name.endswith(".whl") or len(fields) < 5 or Path(name).name != name:
             continue
-        fields = name[: -len(".whl")].split("-")
-        if len(fields) < 5:
+        python_tag, abi, platforms = fields[-3:]
+        if abi != "abi3" or not compatible(python_tag, python_version):
             continue
-        python_tag, abi, platform = fields[-3], fields[-2], fields[-1]
-        if "manylinux" not in platform or "x86_64" not in platform:
-            continue
-        if "abi3" not in abi and "none" not in abi and python_tag not in ("py3", "py2.py3"):
-            continue
-        if not compatible(python_tag, python_version):
-            continue
-        candidates.append(entry)
+        if platform_compatible(platforms, glibc):
+            candidates.append(entry)
     if not candidates:
-        raise SystemExit(f"No compatible manylinux x86-64 wheel for {package}")
-    # Prefer abi3 wheels, then the shortest filename for stable tie-breaking.
-    candidates.sort(key=lambda entry: ("abi3" not in entry["filename"], entry["filename"]))
-    return version, candidates[0]
+        raise ValueError(f"No compatible {package} {VERSION} wheel for this Python/glibc")
+    return sorted(candidates, key=lambda entry: entry["filename"])[0]
 
 
 def download(entry, destination):
-    url = entry["url"]
-    if not url.startswith("https://") or urllib.parse.urlsplit(url).hostname != TRUSTED_HOST:
-        raise SystemExit(f"Refusing untrusted download host for {entry['filename']}")
+    url = urllib.parse.urlsplit(entry["url"])
+    if url.scheme != "https" or url.hostname != "files.pythonhosted.org":
+        raise ValueError("Refusing untrusted Qt download host")
+    name = entry["filename"]
+    if Path(name).name != name or not name.endswith(".whl"):
+        raise ValueError("Invalid wheel filename")
     expected = entry["digests"]["sha256"]
+    if not re.fullmatch("[a-f0-9]{64}", expected):
+        raise ValueError("Invalid wheel digest")
+    target = destination / name
     digest = hashlib.sha256()
-    target = destination / entry["filename"]
-    with urllib.request.urlopen(url, timeout=300) as response, target.open("wb") as stream:
+    size = 0
+    with OPENER.open(entry["url"], timeout=60) as response, target.open("wb") as stream:
         while chunk := response.read(65536):
+            size += len(chunk)
+            if size > MAX_WHEEL:
+                raise ValueError("Oversized Qt wheel")
             digest.update(chunk)
             stream.write(chunk)
     if digest.hexdigest() != expected:
-        target.unlink(missing_ok=True)
-        raise SystemExit(f"Checksum mismatch for {entry['filename']}")
+        raise ValueError(f"Checksum mismatch for {name}")
     return target
 
 
 def extract(wheel, destination):
-    """Unpack a wheel, refusing any member that tries to escape the directory."""
     root = destination.resolve()
     with zipfile.ZipFile(wheel) as archive:
+        if sum(member.file_size for member in archive.infolist()) > MAX_UNPACKED:
+            raise ValueError("Oversized unpacked Qt wheel")
         for member in archive.infolist():
-            name = member.filename
-            if name.startswith("/") or ".." in Path(name).parts:
-                raise SystemExit(f"Refusing unsafe wheel member: {name}")
+            path = Path(member.filename)
+            if path.is_absolute() or ".." in path.parts or "\\" in member.filename:
+                raise ValueError("Unsafe wheel member")
             if stat.S_ISLNK(member.external_attr >> 16):
-                raise SystemExit(f"Refusing symlink in wheel: {name}")
-            if not (root / name).resolve().is_relative_to(root):
-                raise SystemExit(f"Refusing wheel member outside destination: {name}")
+                raise ValueError("Symlink in wheel")
+            if not (root / path).resolve().is_relative_to(root):
+                raise ValueError("Wheel member outside destination")
         archive.extractall(root)
 
 
+def validate(destination):
+    # Runs as the installing user, never root. Also catches missing shared libraries.
+    script = """import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import PySide6, shiboken6
+from PySide6 import QtCore, QtGui, QtQml, QtQuick
+for package in (PySide6, shiboken6):
+    assert Path(package.__file__).resolve().is_relative_to(Path(sys.argv[1]).resolve())
+assert PySide6.__version__ == shiboken6.__version__ == sys.argv[2]
+"""
+    subprocess.run(
+        [sys.executable, "-I", "-c", script, str(destination), VERSION], check=True, timeout=30
+    )
+
+
+def install(destination):
+    if platform.machine() != "x86_64" or sys.version_info < (3, 10):
+        raise ValueError("Qt requires x86-64 Linux and Python 3.10+")
+    libc, version = platform.libc_ver()
+    if libc != "glibc":
+        raise ValueError("Cannot determine glibc compatibility")
+    glibc = tuple(map(int, version.split(".")[:2]))
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.is_symlink():
+        raise ValueError("Refusing symlinked Qt destination")
+    with tempfile.TemporaryDirectory(prefix=".vhp-qt-", dir=destination.parent) as temporary:
+        stage = Path(temporary) / "runtime"
+        stage.mkdir()
+        records = []
+        for package in PACKAGES:
+            entry = select_wheel(package, sys.version_info[:2], glibc)
+            print(f"Fetching {package} {VERSION}", flush=True)
+            wheel = download(entry, Path(temporary))
+            extract(wheel, stage)
+            records.append({"filename": entry["filename"], "sha256": entry["digests"]["sha256"]})
+        validate(stage)
+        (stage / "vhp-runtime.json").write_text(json.dumps({"version": VERSION, "wheels": records}))
+        backup = Path(temporary) / "previous"
+        if destination.exists():
+            os.replace(destination, backup)
+        try:
+            os.replace(stage, destination)
+        except BaseException:
+            if backup.exists():
+                os.replace(backup, destination)
+            raise
+    print(f"Qt {VERSION} ready in {destination}")
+
+
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Fetch the optional Qt runtime")
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--destination", type=Path, default=Path.home() / ".local/share/VirtualHerePad/pylib"
     )
     parser.add_argument(
-        "--keep-wheels",
-        action="store_true",
-        help="keep the downloaded .whl files next to the runtime",
+        "--check", action="store_true", help="validate an existing runtime without downloading"
     )
     options = parser.parse_args(argv)
-
-    if sys.version_info < MINIMUM_PYTHON:
-        raise SystemExit(
-            f"Python {MINIMUM_PYTHON[0]}.{MINIMUM_PYTHON[1]}+ is required for PySide6; "
-            f"this is {sys.version.split()[0]}"
-        )
-    destination = options.destination.expanduser()
-    destination.mkdir(parents=True, exist_ok=True)
-    wheels = destination / ".wheels"
-    wheels.mkdir(exist_ok=True)
-
-    total = 0
-    for package in PACKAGES:
-        version, entry = select_wheel(package, sys.version_info[:2])
-        print(f"{package} {version}: {entry['filename']}")
-        wheel = download(entry, wheels)
-        extract(wheel, destination)
-        total += wheel.stat().st_size
-        if not options.keep_wheels:
-            wheel.unlink()
-    if not options.keep_wheels:
-        wheels.rmdir()
-    print(f"Qt runtime ready in {destination} ({total // (1024 * 1024)} MiB)")
-    print(f"Run the UI with: PYTHONPATH={destination} python3 vhp_ui.py")
+    if os.geteuid() == 0:
+        parser.error("Run as your normal user, never with sudo")
+    if options.check:
+        validate(options.destination)
+    else:
+        install(options.destination)
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        raise SystemExit(f"Qt runtime installation failed: {exc}") from exc

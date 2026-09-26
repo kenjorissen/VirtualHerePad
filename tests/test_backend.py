@@ -10,6 +10,7 @@ import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))  # Discover imports tests/ as top-level; reach repo modules.
@@ -220,10 +221,11 @@ class SocketTests(unittest.TestCase):
             backend = vhp_backend.Backend(
                 options, vhp_backend.Hardware(FakeGadget(), FakeBrightness(), None)
             )
-            backend.options.owner_uid = os.getuid() + 1  # chown will fail without root
-            with self.assertRaises(PermissionError):
-                backend.bind()
+            with patch.object(vhp_backend.os, "chown", side_effect=PermissionError):
+                with self.assertRaises(PermissionError):
+                    backend.run()
             self.assertFalse(path.exists())
+            self.assertTrue(backend.gadget.closed)
 
     def test_non_socket_at_the_path_is_never_replaced(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -319,7 +321,7 @@ class ProtocolTests(unittest.TestCase):
             client.send({"op": "key", "code": 4, "down": True})
             client.send({"op": "ping"})
             client.wait_for("pong")
-            self.assertEqual(harness.gadget.reports(0, timeout=0.3), [])
+            self.assertFalse(select.select([harness.gadget.read_fd], [], [], 0.1)[0])
             client.close()
 
     def test_clear_releases_every_held_key(self):

@@ -31,5 +31,11 @@ jobs:
             ruff.toml
       - name: Install shell development tools
         run: sudo apt-get update && sudo apt-get install -y make shellcheck
-      - name: Lint and test
+      - name: Lint and test (no Qt)
         run: make check
+      - name: Install pinned Qt for offscreen UI tests
+        run: python -m pip install PySide6-Essentials==6.11.2 shiboken6==6.11.2
+      - name: Test with Qt
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: make test

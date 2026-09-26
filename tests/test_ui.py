@@ -257,6 +257,49 @@ class QmlTests(QtTestCase):
             QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, position)
             self.assertFalse(rendered("keypad")[0].property("visible"))
 
+    def test_real_touch_events_reference_count_and_hide_releases_keys(self):
+        with Harness() as harness:
+            bridge = self.bridge_for(harness)
+            engine = QQmlApplicationEngine()
+            engine.setInitialProperties({"vhp": bridge})
+            engine.load(QUrl.fromLocalFile(str(ROOT / "vhp_ui.qml")))
+            window = engine.rootObjects()[0]
+            self.assertTrue(pump(3, lambda: bridge.shared))
+            window.setProperty("keyboardOpen", True)
+            pump(0.2)
+            label = next(
+                item
+                for item in walk(window.contentItem())
+                if item.objectName() == "keycapLabel" and item.property("text") == "a"
+            )
+            position = label.mapToScene(QPointF(label.width() / 2, label.height() / 2)).toPoint()
+            # Focus changes can send an initial clear. Drain only the fixture pipe.
+            import select
+
+            while select.select([harness.gadget.read_fd], [], [], 0)[0]:
+                os.read(harness.gadget.read_fd, 4096)
+            device = QTest.createTouchDevice()
+            sequence = QTest.touchEvent(window, device)
+            sequence.press(0, position, window).commit()
+            pump(0.1)
+            self.assertEqual(harness.gadget.reports(1), [KEY_A])
+            sequence.stationary(0).press(1, position, window).commit()
+            pump(0.1)
+            self.assertFalse(select.select([harness.gadget.read_fd], [], [], 0.1)[0])
+            sequence.release(0, position, window).stationary(1).commit()
+            pump(0.1)
+            self.assertFalse(select.select([harness.gadget.read_fd], [], [], 0.1)[0])
+            sequence.release(1, position, window).commit()
+            pump(0.1)
+            self.assertEqual(harness.gadget.reports(1), [bytes(8)])
+            sequence.press(0, position, window).commit()
+            pump(0.1)
+            self.assertEqual(harness.gadget.reports(1), [KEY_A])
+            window.setProperty("keyboardOpen", False)
+            pump(0.1)
+            self.assertEqual(harness.gadget.reports(1), [bytes(8)])
+            sequence.release(0, position, window).commit()
+
     def test_quit_requires_an_uninterrupted_two_second_hold(self):
         with Harness() as harness:
             bridge = self.bridge_for(harness)
